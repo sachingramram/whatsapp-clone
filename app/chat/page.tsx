@@ -24,6 +24,7 @@ interface Message {
   text: string;
   seen: boolean;
   createdAt: string;
+  voice?: string;
 }
 
 /* ================= PAGE ================= */
@@ -48,16 +49,21 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
   const [search, setSearch] = useState("");
-  const [typingText, setTypingText] = useState("");
 
-  const typingTimeout = useRef<NodeJS.Timeout | null>(null);
+  /* ---------- TYPING ---------- */
+  const [typingUser, setTypingUser] = useState<string | null>(null);
+  const typingTimer = useRef<NodeJS.Timeout | null>(null);
+
+  /* ---------- VOICE ---------- */
+  const [recording, setRecording] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
 
   /* ================= AUTH ================= */
   useEffect(() => {
     if (!username) router.replace("/");
   }, [username, router]);
 
-  /* ================= LOAD CHATS ================= */
+  /* ================= LOAD CHAT LIST ================= */
   useEffect(() => {
     if (!username) return;
 
@@ -85,7 +91,7 @@ export default function ChatPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ chatId, receiver: username }),
       });
-    }, 500);
+    }, 600);
 
     return () => clearTimeout(t);
   }, [chatId, username, messages.length]);
@@ -99,16 +105,15 @@ export default function ChatPage() {
     channel.bind("new-message", (msg: Message) => {
       if (msg.sender === username) return;
 
-      // 🔊 play sound
+      // 🔊 receive sound
       new Audio("/sounds/message.mp3").play().catch(() => {});
 
       setMessages((prev) => [...prev, msg]);
     });
 
-    channel.bind("typing", (d: { user: string; typing: boolean }) => {
-      if (d.user !== username) {
-        setTypingText(d.typing ? `${d.user} is typing…` : "");
-      }
+    channel.bind("typing", (data: { user: string; typing: boolean }) => {
+      if (data.user === username) return;
+      setTypingUser(data.typing ? data.user : null);
     });
 
     channel.bind("seen", () => {
@@ -121,37 +126,6 @@ export default function ChatPage() {
       pusherClient.unsubscribe(`chat-${chatId}`);
     };
   }, [chatId, username]);
-
-  /* ================= TYPING SEND ================= */
-  useEffect(() => {
-    if (!chatId || !username) return;
-
-    if (typingTimeout.current) {
-      clearTimeout(typingTimeout.current);
-    }
-
-    fetch("/api/typing", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chatId,
-        user: username,
-        typing: text.length > 0,
-      }),
-    });
-
-    typingTimeout.current = setTimeout(() => {
-      fetch("/api/typing", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chatId,
-          user: username,
-          typing: false,
-        }),
-      });
-    }, 800);
-  }, [text, chatId, username]);
 
   /* ================= SEARCH USER ================= */
   const searchUser = async () => {
@@ -170,7 +144,10 @@ export default function ChatPage() {
     const cr = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user1: username, user2: d.user.name }),
+      body: JSON.stringify({
+        user1: username,
+        user2: d.user.name,
+      }),
     });
 
     const cd = await cr.json();
@@ -195,7 +172,7 @@ export default function ChatPage() {
         (p) => p !== username
       ) ?? "";
 
-    if (!other) return alert("Chat not ready");
+    if (!other) return;
 
     const r = await fetch("/api/messages", {
       method: "POST",
@@ -213,6 +190,41 @@ export default function ChatPage() {
     const d = await r.json();
     setMessages((p) => [...p, d.message]);
     setText("");
+  };
+
+  /* ================= VOICE RECORD ================= */
+  const startRecording = async () => {
+    if (!chatId || !username) return;
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const recorder = new MediaRecorder(stream);
+    mediaRecorderRef.current = recorder;
+
+    const chunks: Blob[] = [];
+
+    recorder.ondataavailable = (e) => chunks.push(e.data);
+
+    recorder.onstop = async () => {
+      const blob = new Blob(chunks, { type: "audio/webm" });
+      const formData = new FormData();
+
+      formData.append("audio", blob);
+      formData.append("chatId", chatId);
+      formData.append("sender", username);
+
+      await fetch("/api/messages/voice", {
+        method: "POST",
+        body: formData,
+      });
+    };
+
+    recorder.start();
+    setRecording(true);
+  };
+
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop();
+    setRecording(false);
   };
 
   /* ================= LOGOUT ================= */
@@ -264,7 +276,11 @@ export default function ChatPage() {
                 <span>{n}</span>
                 <button
                   onClick={() => {
-                    window.history.pushState(null, "", `/chat?c=${c._id}`);
+                    window.history.pushState(
+                      null,
+                      "",
+                      `/chat?c=${c._id}`
+                    );
                     setChatId(c._id);
                   }}
                 >
@@ -292,10 +308,10 @@ export default function ChatPage() {
             {otherUser}
           </div>
 
-          {typingText && (
-            <div className="text-xs text-gray-600 px-4 py-1">
-              {typingText}
-            </div>
+          {typingUser && (
+            <p className="text-xs text-gray-600 px-4 py-1">
+              {typingUser} is typing…
+            </p>
           )}
 
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
@@ -330,12 +346,55 @@ export default function ChatPage() {
           </div>
 
           <div className="h-14 bg-white flex items-center px-2 gap-2">
+            <button
+              onMouseDown={startRecording}
+              onMouseUp={stopRecording}
+              onTouchStart={startRecording}
+              onTouchEnd={stopRecording}
+              className={`text-xl ${
+                recording ? "text-red-500" : ""
+              }`}
+            >
+              🎤
+            </button>
+
             <input
               value={text}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => {
+                setText(e.target.value);
+
+                if (!chatId || !username) return;
+
+                fetch("/api/typing", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    chatId,
+                    user: username,
+                    typing: true,
+                  }),
+                });
+
+                if (typingTimer.current) {
+                  clearTimeout(typingTimer.current);
+                }
+
+                typingTimer.current = setTimeout(() => {
+                  fetch("/api/typing", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      chatId,
+                      user: username,
+                      typing: false,
+                    }),
+                  });
+                }, 1000);
+              }}
               className="flex-1 bg-gray-100 rounded-full px-4 py-2 text-sm"
               placeholder="Message"
             />
+
             <button
               onClick={sendMessage}
               className="text-[#075E54] font-medium px-3"

@@ -12,7 +12,7 @@ interface User {
 interface Chat {
   _id: string;
   participants: string[];
-  unread?: number;
+  unread?: number; // 👈 already coming from backend
 }
 
 interface Message {
@@ -101,6 +101,15 @@ export default function ChatPage() {
       if (msg.sender !== username) {
         new Audio("/sounds/message.mp3").play().catch(() => {});
         setMessages((prev) => [...prev, msg]);
+
+        // 🔴 increment unread count in chat list (UI only)
+        setChats((prev) =>
+          prev.map((c) =>
+            c._id === chatId
+              ? { ...c, unread: (c.unread ?? 0) + 1 }
+              : c
+          )
+        );
       }
     });
 
@@ -282,10 +291,26 @@ export default function ChatPage() {
                 onClick={() => {
                   setChatId(c._id);
                   setIsChatOpen(true);
+
+                  // ✅ mark unread as 0 when opening
+                  setChats((prev) =>
+                    prev.map((x) =>
+                      x._id === c._id
+                        ? { ...x, unread: 0 }
+                        : x
+                    )
+                  );
                 }}
-                className="px-4 py-3 border-b cursor-pointer hover:bg-gray-100"
+                className="px-4 py-3 border-b cursor-pointer hover:bg-gray-100 flex justify-between items-center"
               >
-                {name}
+                <span>{name}</span>
+
+                {/* 🔴 UNREAD BADGE */}
+                {c.unread && c.unread > 0 && (
+                  <span className="bg-green-500 text-white text-xs px-2 py-0.5 rounded-full">
+                    {c.unread}
+                  </span>
+                )}
               </div>
             );
           })}
@@ -329,7 +354,7 @@ export default function ChatPage() {
                 }`}
               >
                 <div
-                  className={`px-3 py-2 rounded-lg text-sm max-w-[70%] relative
+                  className={`px-3 py-2 rounded-lg text-sm max-w-[70%]
                   ${
                     m.sender === username
                       ? "bg-[#DCF8C6]"

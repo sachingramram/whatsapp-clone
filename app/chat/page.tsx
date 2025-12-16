@@ -22,6 +22,7 @@ interface Message {
 /* ================= PAGE ================= */
 
 export default function ChatPage() {
+  /* ---------- CURRENT USER ---------- */
   const [currentUser] = useState<User | null>(() => {
     if (typeof window === "undefined") return null;
     const stored = localStorage.getItem("user");
@@ -34,29 +35,36 @@ export default function ChatPage() {
   const [text, setText] = useState("");
   const [search, setSearch] = useState("");
 
-  /* ========== LOAD CHAT LIST (ONCE) ========== */
+  /* ================= LOAD CHAT LIST (🔥 CACHE FIXED) ================= */
   useEffect(() => {
     if (!currentUser) return;
 
-    fetch(`/api/chat/list?user=${currentUser.name}`)
+    fetch(`/api/chat/list?user=${currentUser.name}`, {
+      cache: "no-store", // 🔥 IMPORTANT: disable Vercel + browser cache
+    })
       .then((res) => res.json())
       .then((data: { chats: Chat[] }) => {
         setChats(data.chats);
+      })
+      .catch(() => {
+        console.error("Failed to load chats");
       });
   }, [currentUser]);
 
-  /* ========== LOAD MESSAGES ========== */
+  /* ================= LOAD MESSAGES ================= */
   useEffect(() => {
     if (!activeChat) return;
 
-    fetch(`/api/messages?chatId=${activeChat._id}`)
+    fetch(`/api/messages?chatId=${activeChat._id}`, {
+      cache: "no-store",
+    })
       .then((res) => res.json())
       .then((data: { messages: Message[] }) => {
         setMessages(data.messages);
       });
   }, [activeChat]);
 
-  /* ========== SEARCH USER ========== */
+  /* ================= SEARCH USER ================= */
   const searchUser = async () => {
     if (!currentUser || !search.trim()) return;
 
@@ -94,7 +102,7 @@ export default function ChatPage() {
     setSearch("");
   };
 
-  /* ========== SEND MESSAGE ========== */
+  /* ================= SEND MESSAGE ================= */
   const sendMessage = async () => {
     if (!activeChat || !currentUser || !text.trim()) return;
 
@@ -113,6 +121,7 @@ export default function ChatPage() {
     setText("");
   };
 
+  /* ================= LOGOUT ================= */
   const logout = () => {
     localStorage.removeItem("user");
     window.location.href = "/";
@@ -127,7 +136,7 @@ export default function ChatPage() {
 
   return (
     <div className="h-screen flex bg-gray-100 relative">
-      {/* ===== CHAT LIST (ALWAYS VISIBLE) ===== */}
+      {/* ===== CHAT LIST (ALWAYS MOUNTED) ===== */}
       <div className="w-full md:w-1/3 flex flex-col bg-white border-r">
         <div className="bg-green-600 text-white p-4 flex justify-between">
           <h1 className="font-semibold">WhatsApp</h1>
@@ -164,7 +173,7 @@ export default function ChatPage() {
               <div
                 key={chat._id}
                 onClick={() => setActiveChat(chat)}
-                className="p-4 border-b cursor-pointer"
+                className="p-4 border-b cursor-pointer hover:bg-gray-100"
               >
                 {name}
               </div>

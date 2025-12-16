@@ -292,6 +292,15 @@ export default function ChatPage() {
                   setChatId(c._id);
                   setIsChatOpen(true);
 
+                  fetch("/api/messages/seen", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      chatId: c._id,
+                      user: username,
+                    }),
+                  });
+
                   // ✅ mark unread as 0 when opening
                   setChats((prev) =>
                     prev.map((x) =>

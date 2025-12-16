@@ -1,32 +1,42 @@
 import { NextResponse } from "next/server";
-import { connectDB } from "@/lib/db";
 import Message from "@/lib/Message";
+import { connectDB } from "@/lib/db";
+
+interface SeenBody {
+  chatId: string;
+  user: string;
+}
 
 export async function POST(req: Request) {
-  try {
-    const body = await req.json();
-    const { chatId, receiver } = body;
+  const body: unknown = await req.json();
 
-    if (!chatId || !receiver) {
-      return NextResponse.json(
-        { error: "Invalid payload" },
-        { status: 400 }
-      );
-    }
-
-    await connectDB();
-
-    await Message.updateMany(
-      { chatId, receiver, seen: false },
-      { seen: true }
-    );
-
-    return NextResponse.json({ success: true });
-  } catch (err) {
-    console.error("Seen error:", err);
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    !("chatId" in body) ||
+    !("user" in body)
+  ) {
     return NextResponse.json(
-      { error: "Server error" },
-      { status: 500 }
+      { error: "Invalid body" },
+      { status: 400 }
     );
   }
+
+  const { chatId, user } = body as SeenBody;
+
+  await connectDB();
+
+  // 🔥 mark messages as seen
+  await Message.updateMany(
+    {
+      chatId,
+      receiver: user,
+      seen: false,
+    },
+    {
+      $set: { seen: true },
+    }
+  );
+
+  return NextResponse.json({ success: true });
 }

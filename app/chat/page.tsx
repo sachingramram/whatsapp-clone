@@ -306,11 +306,12 @@ export default function ChatPage() {
                 <span>{name}</span>
 
                 {/* 🔴 UNREAD BADGE */}
-                {c.unread && c.unread > 0 && (
-                  <span className="bg-green-500 text-white text-xs px-2 py-0.5 rounded-full">
-                    {c.unread}
-                  </span>
-                )}
+                {c.unread !== undefined && c.unread > 0 && (
+  <span className="bg-green-500 text-white text-xs px-2 py-0.5 rounded-full">
+    {c.unread}
+  </span>
+)}
+
               </div>
             );
           })}

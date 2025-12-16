@@ -3,37 +3,41 @@ import { connectDB } from "@/lib/db";
 import Message from "@/lib/Message";
 import { pusher } from "@/lib/pusher";
 
-interface MessageBody {
-  chatId: string;
-  sender: string;
-  receiver: string;
-  text: string;
-}
-
-export async function POST(req: Request) {
+/* ========= GET MESSAGES ========= */
+export async function GET(req: Request) {
   try {
-    const body: unknown = await req.json();
+    const { searchParams } = new URL(req.url);
+    const chatId = searchParams.get("chatId");
 
-    if (
-      typeof body !== "object" ||
-      body === null ||
-      !("chatId" in body) ||
-      !("sender" in body) ||
-      !("receiver" in body) ||
-      !("text" in body)
-    ) {
+    if (!chatId) {
       return NextResponse.json(
-        { error: "Invalid payload" },
+        { error: "chatId required" },
         { status: 400 }
       );
     }
 
-    const { chatId, sender, receiver, text } =
-      body as MessageBody;
+    await connectDB();
+    const messages = await Message.find({ chatId }).sort("createdAt");
 
-    if (!receiver) {
+    return NextResponse.json({ messages });
+  } catch (err) {
+    console.error("GET messages error:", err);
+    return NextResponse.json(
+      { error: "Server error" },
+      { status: 500 }
+    );
+  }
+}
+
+/* ========= SEND MESSAGE ========= */
+export async function POST(req: Request) {
+  try {
+    const body = await req.json();
+    const { chatId, sender, receiver, text } = body;
+
+    if (!chatId || !sender || !receiver || !text) {
       return NextResponse.json(
-        { error: "Receiver missing" },
+        { error: "Missing fields" },
         { status: 400 }
       );
     }
@@ -48,7 +52,6 @@ export async function POST(req: Request) {
       seen: false,
     });
 
-    // 🔥 Pusher (safe)
     await pusher.trigger(`chat-${chatId}`, "new-message", {
       _id: message._id.toString(),
       chatId,
@@ -60,10 +63,8 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ message });
-
   } catch (err) {
-    console.error("MESSAGE API ERROR:", err);
-
+    console.error("POST message error:", err);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

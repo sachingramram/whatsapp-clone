@@ -186,7 +186,7 @@ export default function ChatPage() {
     });
   
     if (!res.ok) {
-      alert("Failed to send message");
+        console.error("Send failed", res.status);
       return;
     }
   

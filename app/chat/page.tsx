@@ -154,12 +154,12 @@ export default function ChatPage() {
   /* ================= SEND MESSAGE ================= */
   const sendMessage = async () => {
     if (!chatId || !username || !text.trim()) return;
-
+  
     const otherUser =
       chats.find((c) => c._id === chatId)?.participants.find(
         (p) => p !== username
       ) ?? "";
-
+  
     const res = await fetch("/api/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -170,11 +170,15 @@ export default function ChatPage() {
         text,
       }),
     });
-
+  
     const data: { message: Message } = await res.json();
+  
+    // ✅ IMMEDIATE UI UPDATE (OPTIMISTIC)
     setMessages((prev) => [...prev, data.message]);
+  
     setText("");
   };
+  
 
   /* ================= LOGOUT ================= */
   const logout = () => {

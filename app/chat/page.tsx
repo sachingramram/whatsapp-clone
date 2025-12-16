@@ -53,6 +53,21 @@ export default function ChatPage() {
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
+  /* ================= HELPERS ================= */
+
+  const formatTime = (dateStr: string) => {
+    const d = new Date(dateStr);
+    return d.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const logout = () => {
+    localStorage.removeItem("user");
+    window.location.href = "/";
+  };
+
   /* ================= LOAD CHATS ================= */
   useEffect(() => {
     if (!username) return;
@@ -176,6 +191,11 @@ export default function ChatPage() {
     if (timerRef.current) clearInterval(timerRef.current);
   };
 
+  const activeChat = chats.find((c) => c._id === chatId);
+  const otherUser =
+    activeChat?.participants.find((p) => p !== username) ??
+    "";
+
   /* ================= UI ================= */
 
   return (
@@ -186,8 +206,11 @@ export default function ChatPage() {
         w-full md:w-1/3
         ${isChatOpen ? "hidden md:flex" : "flex"}`}
       >
-        <div className="h-14 bg-[#075E54] text-white flex items-center px-4">
-          WhatsApp
+        <div className="h-14 bg-[#075E54] text-white flex items-center px-4 justify-between">
+          <span className="font-semibold">WhatsApp</span>
+          <button onClick={logout} className="text-sm">
+            Logout
+          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -218,12 +241,21 @@ export default function ChatPage() {
           ${isChatOpen ? "flex" : "hidden md:flex"}`}
         >
           {/* HEADER */}
-          <div className="h-14 bg-[#075E54] text-white flex items-center px-4">
-            <button
-              className="md:hidden mr-3"
-              onClick={() => setIsChatOpen(false)}
-            >
-              ←
+          <div className="h-14 bg-[#075E54] text-white flex items-center px-4 justify-between">
+            <div className="flex items-center gap-3">
+              <button
+                className="md:hidden"
+                onClick={() => setIsChatOpen(false)}
+              >
+                ←
+              </button>
+              <span className="font-semibold">
+                {otherUser}
+              </span>
+            </div>
+
+            <button onClick={logout} className="text-sm">
+              Logout
             </button>
           </div>
 
@@ -239,7 +271,7 @@ export default function ChatPage() {
                 }`}
               >
                 <div
-                  className={`px-3 py-2 rounded-lg text-sm max-w-[70%]
+                  className={`px-3 py-2 rounded-lg text-sm max-w-[70%] relative
                   ${
                     m.sender === username
                       ? "bg-[#DCF8C6]"
@@ -255,12 +287,17 @@ export default function ChatPage() {
                   ) : (
                     m.text
                   )}
+
+                  {/* TIME */}
+                  <span className="block text-[10px] text-gray-500 text-right mt-1">
+                    {formatTime(m.createdAt)}
+                  </span>
                 </div>
               </div>
             ))}
           </div>
 
-          {/* ================= INPUT (FIXED BOTTOM MOBILE) ================= */}
+          {/* ================= INPUT (FIXED BOTTOM) ================= */}
           <div
             className="
               bg-white px-2 py-2 flex items-end gap-2

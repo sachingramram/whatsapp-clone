@@ -13,6 +13,10 @@ interface Chat {
   _id: string;
   participants: string[];
   unread?: number; // 👈 already coming from backend
+
+  isGroup?: boolean;
+  name?: string;
+  admin?: string;
 }
 
 interface Message {
@@ -43,6 +47,7 @@ export default function ChatPage() {
   const [chatId, setChatId] = useState<string | null>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [hasLoadedChats, setHasLoadedChats] = useState(false);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
@@ -268,6 +273,13 @@ export default function ChatPage() {
       >
         <div className="h-14 bg-[#075E54] text-white flex items-center px-4 justify-between">
           <span className="font-semibold">WhatsApp</span>
+          <button
+      onClick={() => setShowCreateGroup(true)}
+      className="text-xl leading-none"
+      title="Create Group"
+    >
+      +
+    </button>
           <button onClick={logout} className="text-sm">
             Logout
           </button>
@@ -296,9 +308,10 @@ export default function ChatPage() {
     </p>
   ) : (
     chats.map((c) => {
-      const name = c.participants.find(
-        (p) => p !== username
-      );
+      const name = c.isGroup
+  ? c.name
+  : c.participants.find((p) => p !== username);
+
 
       return (
         <div
@@ -359,8 +372,9 @@ export default function ChatPage() {
                 ⬅️⬅️ 
               </button>
               <span className="font-semibold">
-                {otherUser}
-              </span>
+  {activeChat?.isGroup ? activeChat.name : otherUser}
+</span>
+
             </div>
 
             <button onClick={logout} className="text-sm">
@@ -387,6 +401,12 @@ export default function ChatPage() {
                       : "bg-white"
                   }`}
                 >
+                  {activeChat?.isGroup && m.sender !== username && (
+  <div className="text-xs text-green-700 font-semibold mb-1">
+    {m.sender}
+  </div>
+)}
+
                   {m.deletedForEveryone ? (
                     <i className="text-gray-400">
                       This message was deleted

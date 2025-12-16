@@ -340,7 +340,7 @@ export default function ChatPage() {
                 className="md:hidden"
                 onClick={() => setIsChatOpen(false)}
               >
-                ←
+                ⬅️ Back
               </button>
               <span className="font-semibold">
                 {otherUser}

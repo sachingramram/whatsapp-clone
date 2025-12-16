@@ -65,7 +65,7 @@ export default function ChatPage() {
       });
   }, [username]);
 
-  /* ================= LOAD MESSAGES + SEEN ================= */
+  /* ================= LOAD MESSAGES ================= */
   useEffect(() => {
     if (!chatId || !username) return;
 
@@ -73,31 +73,37 @@ export default function ChatPage() {
       .then((res) => res.json())
       .then((data: { messages: Message[] }) => {
         setMessages(data.messages);
-
-        const hasUnread = data.messages.some(
-          (m) => m.receiver === username && !m.seen
-        );
-
-        if (hasUnread) {
-          fetch("/api/messages/seen", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ chatId, receiver: username }),
-          });
-        }
       });
   }, [chatId, username]);
 
-  /* ================= REALTIME ================= */
+  /* ================= SEEN (DELAYED, SAFE) ================= */
+  useEffect(() => {
+    if (!chatId || !username) return;
+
+    const timer = setTimeout(() => {
+      fetch("/api/messages/seen", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chatId,
+          receiver: username,
+        }),
+      });
+    }, 600); // delay = stable UI (WhatsApp style)
+
+    return () => clearTimeout(timer);
+  }, [chatId, username]);
+
+  /* ================= REALTIME (PUSHER) ================= */
   useEffect(() => {
     if (!chatId) return;
 
     const channel = pusherClient.subscribe(`chat-${chatId}`);
 
+    // 🔥 receiver only
     channel.bind("new-message", (msg: Message) => {
-      setMessages((prev) =>
-        prev.some((m) => m._id === msg._id) ? prev : [...prev, msg]
-      );
+      if (msg.sender === username) return; // IMPORTANT FIX
+      setMessages((prev) => [...prev, msg]);
     });
 
     channel.bind("typing", (d: { user: string; typing: boolean }) => {
@@ -113,9 +119,9 @@ export default function ChatPage() {
     return () => {
       pusherClient.unsubscribe(`chat-${chatId}`);
     };
-  }, [chatId]);
+  }, [chatId, username]);
 
-  /* ================= SEARCH ================= */
+  /* ================= SEARCH USER ================= */
   const searchUser = async () => {
     if (!username || !search.trim()) return;
 
@@ -176,7 +182,7 @@ export default function ChatPage() {
 
     const data: { message: Message } = await res.json();
 
-    // ✅ OPTIMISTIC UPDATE (CRITICAL)
+    // ✅ sender optimistic update (ONLY ONCE)
     setMessages((prev) => [...prev, data.message]);
     setText("");
   };
@@ -195,7 +201,6 @@ export default function ChatPage() {
 
   return (
     <div className="h-screen flex bg-[#ECE5DD] overflow-hidden">
-
       {/* ===== CHAT LIST ===== */}
       <div className="w-full md:w-1/3 bg-white flex flex-col border-r">
         <div className="h-14 bg-[#075E54] text-white flex items-center px-4">
@@ -229,11 +234,9 @@ export default function ChatPage() {
             return (
               <div
                 key={chat._id}
-                className="px-4 py-3 border-b flex items-center"
+                className="px-4 py-3 border-b flex items-center justify-between"
               >
-                <div className="flex-1">
-                  <p className="font-medium">{name}</p>
-                </div>
+                <span className="font-medium">{name}</span>
                 <button
                   onClick={() => {
                     window.history.pushState(
@@ -243,7 +246,6 @@ export default function ChatPage() {
                     );
                     setChatId(chat._id);
                   }}
-                  className="text-gray-500"
                 >
                   ➤
                 </button>
@@ -255,8 +257,7 @@ export default function ChatPage() {
 
       {/* ===== CHAT WINDOW ===== */}
       {chatId && (
-        <div className="fixed md:static inset-0 flex flex-col flex-1">
-
+        <div className="absolute md:static inset-0 flex flex-col flex-1 bg-[#ECE5DD]">
           <div className="h-14 bg-[#075E54] text-white flex items-center px-3 gap-3">
             <button
               className="md:hidden"
@@ -310,29 +311,7 @@ export default function ChatPage() {
           <div className="h-14 bg-white flex items-center px-2 gap-2">
             <input
               value={text}
-              onChange={(e) => {
-                setText(e.target.value);
-                fetch("/api/typing", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    chatId,
-                    user: username,
-                    typing: true,
-                  }),
-                });
-              }}
-              onBlur={() =>
-                fetch("/api/typing", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    chatId,
-                    user: username,
-                    typing: false,
-                  }),
-                })
-              }
+              onChange={(e) => setText(e.target.value)}
               placeholder="Message"
               className="flex-1 bg-gray-100 rounded-full px-4 py-2 text-sm"
             />

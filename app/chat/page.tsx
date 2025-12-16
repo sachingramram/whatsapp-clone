@@ -25,7 +25,7 @@ interface Message {
 export default function ChatPage() {
   const router = useRouter();
 
-  /* ---------- USER ---------- */
+  /* ---------- USER (DERIVED SAFELY) ---------- */
   const [username] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     const stored = localStorage.getItem("user");
@@ -33,40 +33,32 @@ export default function ChatPage() {
     return (JSON.parse(stored) as User).name;
   });
 
-  /* ---------- CHAT ID FROM URL (NO useSearchParams) ---------- */
-  const [chatId, setChatId] = useState<string | null>(null);
+  /* ---------- CHAT ID (DERIVED SAFELY FROM URL) ---------- */
+  const [chatId, setChatId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return new URLSearchParams(window.location.search).get("c");
+  });
 
   const [chats, setChats] = useState<Chat[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
   const [search, setSearch] = useState("");
 
-  /* ================= READ URL ON CLIENT ================= */
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    setChatId(params.get("c"));
-  }, []);
-
   /* ================= REDIRECT IF NOT LOGGED IN ================= */
   useEffect(() => {
-    if (!username) {
-      router.replace("/");
-    }
+    if (!username) router.replace("/");
   }, [username, router]);
 
   /* ================= LOAD CHAT LIST ================= */
   useEffect(() => {
     if (!username) return;
 
-    fetch(`/api/chat/list?user=${username}`, {
-      cache: "no-store",
-    })
+    fetch(`/api/chat/list?user=${username}`, { cache: "no-store" })
       .then((res) => res.json())
       .then((data: { chats: Chat[] }) => {
         setChats(data.chats);
 
-        // 🔥 auto open first chat on mobile
+        // auto open first chat (mobile UX)
         if (!chatId && data.chats.length > 0) {
           const id = data.chats[0]._id;
           window.history.replaceState(null, "", `/chat?c=${id}`);
@@ -79,9 +71,7 @@ export default function ChatPage() {
   useEffect(() => {
     if (!chatId) return;
 
-    fetch(`/api/messages?chatId=${chatId}`, {
-      cache: "no-store",
-    })
+    fetch(`/api/messages?chatId=${chatId}`, { cache: "no-store" })
       .then((res) => res.json())
       .then((data: { messages: Message[] }) => {
         setMessages(data.messages);
@@ -154,35 +144,38 @@ export default function ChatPage() {
 
   const activeChat = chats.find((c) => c._id === chatId);
   const otherUser =
-    activeChat?.participants.find((p) => p !== username) ??
-    "Select a chat";
+    activeChat?.participants.find((p) => p !== username) ?? "";
 
   /* ================= UI ================= */
 
   return (
-    <div className="h-screen flex bg-gray-100">
-      {/* CHAT LIST */}
-      <div className="w-full md:w-1/3 bg-white border-r flex flex-col">
-        <div className="bg-green-600 text-white p-4 flex justify-between">
-          <h1>WhatsApp</h1>
-          <button onClick={logout}>Logout</button>
-        </div>
+    <div className="h-screen bg-[#ECE5DD] flex overflow-hidden">
 
-        <div className="p-3 border-b">
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full border p-2 rounded"
-            placeholder="Search exact username"
-          />
-          <button
-            onClick={searchUser}
-            className="w-full mt-2 bg-green-600 text-white py-2 rounded"
-          >
-            Search
+      {/* ================= CHAT LIST ================= */}
+      <div
+        className={`${
+          chatId ? "hidden md:flex" : "flex"
+        } w-full md:w-1/3 flex-col bg-white`}
+      >
+        {/* Header */}
+        <div className="h-14 bg-[#075E54] text-white flex items-center px-4 font-medium">
+          WhatsApp
+          <button onClick={logout} className="ml-auto text-sm">
+            Logout
           </button>
         </div>
 
+        {/* Search */}
+        <div className="p-2 bg-gray-100">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search or start new chat"
+            className="w-full rounded-full px-4 py-2 text-sm outline-none"
+          />
+        </div>
+
+        {/* List */}
         <div className="flex-1 overflow-y-auto">
           {chats.map((chat) => {
             const name = chat.participants.find(
@@ -199,62 +192,80 @@ export default function ChatPage() {
                   );
                   setChatId(chat._id);
                 }}
-                className={`p-4 border-b cursor-pointer ${
-                  chat._id === chatId ? "bg-gray-100" : ""
-                }`}
+                className="px-4 py-3 border-b flex items-center gap-3 hover:bg-gray-100 cursor-pointer"
               >
-                {name}
+                <div className="w-10 h-10 rounded-full bg-gray-400 flex items-center justify-center text-white">
+                  {name?.[0]}
+                </div>
+                <p className="font-medium">{name}</p>
               </div>
             );
           })}
         </div>
       </div>
 
-      {/* CHAT WINDOW */}
-      <div className="flex-1 flex flex-col">
-        <div className="bg-green-600 text-white p-4">
-          {otherUser}
-        </div>
+      {/* ================= CHAT WINDOW ================= */}
+      {chatId && (
+        <div className="fixed md:static inset-0 flex flex-col flex-1 bg-[#ECE5DD]">
 
-        <div className="flex-1 p-4 overflow-y-auto">
-          {messages.map((msg) => (
-            <div
-              key={msg._id}
-              className={`mb-2 flex ${
-                msg.sender === username
-                  ? "justify-end"
-                  : "justify-start"
-              }`}
+          {/* Header */}
+          <div className="h-14 bg-[#075E54] text-white flex items-center px-3 gap-3">
+            <button
+              className="md:hidden"
+              onClick={() => {
+                window.history.pushState(null, "", "/chat");
+                setChatId(null);
+              }}
             >
+              ←
+            </button>
+            <div className="w-9 h-9 rounded-full bg-gray-400 flex items-center justify-center">
+              {otherUser[0]}
+            </div>
+            <p className="font-medium">{otherUser}</p>
+          </div>
+
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            {messages.map((msg) => (
               <div
-                className={`px-3 py-2 rounded ${
+                key={msg._id}
+                className={`flex ${
                   msg.sender === username
-                    ? "bg-green-500 text-white"
-                    : "bg-white"
+                    ? "justify-end"
+                    : "justify-start"
                 }`}
               >
-                {msg.text}
+                <div
+                  className={`px-3 py-2 rounded-lg max-w-[75%] text-sm ${
+                    msg.sender === username
+                      ? "bg-[#DCF8C6]"
+                      : "bg-white"
+                  }`}
+                >
+                  {msg.text}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
 
-        {chatId && (
-          <div className="p-3 bg-white border-t flex gap-2">
+          {/* Input */}
+          <div className="h-14 bg-white flex items-center px-2 gap-2">
             <input
               value={text}
               onChange={(e) => setText(e.target.value)}
-              className="flex-1 border rounded px-3"
+              placeholder="Message"
+              className="flex-1 bg-gray-100 rounded-full px-4 py-2 outline-none text-sm"
             />
             <button
               onClick={sendMessage}
-              className="bg-green-600 text-white px-4 rounded"
+              className="text-[#075E54] font-medium px-3"
             >
               Send
             </button>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

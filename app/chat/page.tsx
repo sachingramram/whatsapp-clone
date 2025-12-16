@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 /* ================= TYPES ================= */
 
@@ -22,23 +23,19 @@ interface Message {
 /* ================= PAGE ================= */
 
 export default function ChatPage() {
-  /* ---------- USERNAME (LAZY INIT) ---------- */
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const chatId = searchParams.get("c"); // 🔥 source of truth
+
+  /* ---------- USER ---------- */
   const [username] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     const stored = localStorage.getItem("user");
     if (!stored) return null;
-    const parsed = JSON.parse(stored) as User;
-    return parsed.name;
+    return (JSON.parse(stored) as User).name;
   });
 
-  /* ---------- CHATS (LAZY INIT) ---------- */
-  const [chats, setChats] = useState<Chat[]>(() => {
-    if (typeof window === "undefined") return [];
-    const cached = localStorage.getItem("chat_list");
-    return cached ? (JSON.parse(cached) as Chat[]) : [];
-  });
-
-  const [activeChat, setActiveChat] = useState<Chat | null>(null);
+  const [chats, setChats] = useState<Chat[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
   const [search, setSearch] = useState("");
@@ -46,11 +43,11 @@ export default function ChatPage() {
   /* ================= REDIRECT IF NOT LOGGED IN ================= */
   useEffect(() => {
     if (!username) {
-      window.location.href = "/";
+      router.replace("/");
     }
-  }, [username]);
+  }, [username, router]);
 
-  /* ================= FETCH CHAT LIST + RESTORE LAST CHAT ================= */
+  /* ================= LOAD CHAT LIST ================= */
   useEffect(() => {
     if (!username) return;
 
@@ -60,36 +57,26 @@ export default function ChatPage() {
       .then((res) => res.json())
       .then((data: { chats: Chat[] }) => {
         setChats(data.chats);
-        localStorage.setItem(
-          "chat_list",
-          JSON.stringify(data.chats)
-        );
 
-        // 🔥 MOBILE FIX: restore last active chat
-        const lastChatId = localStorage.getItem("last_chat_id");
-        if (lastChatId) {
-          const foundChat = data.chats.find(
-            (c) => c._id === lastChatId
-          );
-          if (foundChat) {
-            setActiveChat(foundChat);
-          }
+        // 🔥 mobile fix: auto-open last or first chat
+        if (!chatId && data.chats.length > 0) {
+          router.replace(`/chat?c=${data.chats[0]._id}`);
         }
       });
-  }, [username]);
+  }, [username, chatId, router]);
 
-  /* ================= LOAD MESSAGES ================= */
+  /* ================= LOAD MESSAGES (NO STATE CLEAR) ================= */
   useEffect(() => {
-    if (!activeChat) return;
+    if (!chatId) return;
 
-    fetch(`/api/messages?chatId=${activeChat._id}`, {
+    fetch(`/api/messages?chatId=${chatId}`, {
       cache: "no-store",
     })
       .then((res) => res.json())
       .then((data: { messages: Message[] }) => {
         setMessages(data.messages);
       });
-  }, [activeChat]);
+  }, [chatId]);
 
   /* ================= SEARCH USER ================= */
   const searchUser = async () => {
@@ -119,35 +106,25 @@ export default function ChatPage() {
 
     const chatData: { chat: Chat } = await chatRes.json();
 
-    setChats((prev) => {
-      const updated = prev.find(
-        (c) => c._id === chatData.chat._id
-      )
+    setChats((prev) =>
+      prev.find((c) => c._id === chatData.chat._id)
         ? prev
-        : [...prev, chatData.chat];
+        : [...prev, chatData.chat]
+    );
 
-      localStorage.setItem(
-        "chat_list",
-        JSON.stringify(updated)
-      );
-
-      return updated;
-    });
-
-    setActiveChat(chatData.chat);
-    localStorage.setItem("last_chat_id", chatData.chat._id);
+    router.push(`/chat?c=${chatData.chat._id}`);
     setSearch("");
   };
 
   /* ================= SEND MESSAGE ================= */
   const sendMessage = async () => {
-    if (!activeChat || !username || !text.trim()) return;
+    if (!chatId || !username || !text.trim()) return;
 
     const res = await fetch("/api/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        chatId: activeChat._id,
+        chatId,
         sender: username,
         text: text.trim(),
       }),
@@ -161,20 +138,19 @@ export default function ChatPage() {
   /* ================= LOGOUT ================= */
   const logout = () => {
     localStorage.removeItem("user");
-    localStorage.removeItem("chat_list");
-    localStorage.removeItem("last_chat_id");
-    window.location.href = "/";
+    router.replace("/");
   };
 
+  const activeChat = chats.find((c) => c._id === chatId);
   const otherUser =
     activeChat?.participants.find(
       (p) => p !== username
-    ) ?? "";
+    ) ?? "Select a chat";
 
   /* ================= UI ================= */
 
   return (
-    <div className="h-screen flex bg-gray-100 relative">
+    <div className="h-screen flex bg-gray-100">
       {/* ===== CHAT LIST ===== */}
       <div className="w-full md:w-1/3 flex flex-col bg-white border-r">
         <div className="bg-green-600 text-white p-4 flex justify-between">
@@ -199,9 +175,7 @@ export default function ChatPage() {
 
         <div className="flex-1 overflow-y-auto">
           {chats.length === 0 && (
-            <p className="p-4 text-gray-400">
-              No chats yet
-            </p>
+            <p className="p-4 text-gray-400">No chats yet</p>
           )}
 
           {chats.map((chat) => {
@@ -211,14 +185,12 @@ export default function ChatPage() {
             return (
               <div
                 key={chat._id}
-                onClick={() => {
-                  setActiveChat(chat);
-                  localStorage.setItem(
-                    "last_chat_id",
-                    chat._id
-                  );
-                }}
-                className="p-4 border-b cursor-pointer hover:bg-gray-100"
+                onClick={() =>
+                  router.push(`/chat?c=${chat._id}`)
+                }
+                className={`p-4 border-b cursor-pointer ${
+                  chat._id === chatId ? "bg-gray-100" : ""
+                }`}
               >
                 {name}
               </div>
@@ -228,20 +200,20 @@ export default function ChatPage() {
       </div>
 
       {/* ===== CHAT WINDOW ===== */}
-      {activeChat && (
-        <div className="fixed inset-0 md:static md:flex flex-1 flex-col bg-gray-100 z-50">
-          <div className="bg-green-600 text-white p-4 flex items-center gap-3">
-            <button
-              className="md:hidden"
-              onClick={() => setActiveChat(null)}
-            >
-              ←
-            </button>
-            <h2 className="font-semibold">{otherUser}</h2>
-          </div>
+      <div className="flex-1 flex flex-col">
+        <div className="bg-green-600 text-white p-4">
+          <h2 className="font-semibold">{otherUser}</h2>
+        </div>
 
-          <div className="flex-1 p-4 overflow-y-auto">
-            {messages.map((msg) => (
+        <div className="flex-1 p-4 overflow-y-auto">
+          {!chatId && (
+            <p className="text-gray-400 text-center mt-10">
+              Select a chat to start messaging
+            </p>
+          )}
+
+          {chatId &&
+            messages.map((msg) => (
               <div
                 key={msg._id}
                 className={`mb-2 flex ${
@@ -251,7 +223,7 @@ export default function ChatPage() {
                 }`}
               >
                 <div
-                  className={`px-3 py-2 rounded ${
+                  className={`px-3 py-2 rounded max-w-[70%] ${
                     msg.sender === username
                       ? "bg-green-500 text-white"
                       : "bg-white"
@@ -261,8 +233,9 @@ export default function ChatPage() {
                 </div>
               </div>
             ))}
-          </div>
+        </div>
 
+        {chatId && (
           <div className="p-3 bg-white border-t flex gap-2">
             <input
               value={text}
@@ -277,8 +250,8 @@ export default function ChatPage() {
               Send
             </button>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

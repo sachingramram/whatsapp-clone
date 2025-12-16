@@ -1,20 +1,12 @@
-import mongoose from "mongoose";
+import mongoose, { Schema } from "mongoose";
 
-const MessageSchema = new mongoose.Schema(
+const MessageSchema = new Schema(
   {
-    chatId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Chat",
-      required: true,
-    },
-    sender: {
-      type: String, // username
-      required: true,
-    },
-    text: {
-      type: String,
-      required: true,
-    },
+    chatId: { type: String, required: true },
+    sender: { type: String, required: true },
+    receiver: { type: String, required: true },
+    text: { type: String, required: true },
+    seen: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

@@ -428,15 +428,7 @@ export default function ChatPage() {
                 ➤
               </button>
             ) : (
-              <button
-                onMouseDown={startRecording}
-                onMouseUp={stopRecording}
-                onTouchStart={startRecording}
-                onTouchEnd={stopRecording}
-                className="bg-[#075E54] text-white rounded-full w-10 h-10"
-              >
-                🎤
-              </button>
+               <span>Msg</span>
             )}
           </div>
         </div>

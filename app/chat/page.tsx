@@ -34,11 +34,10 @@ export default function ChatPage() {
   const [username] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     const stored = localStorage.getItem("user");
-    if (!stored) return null;
-    return (JSON.parse(stored) as User).name;
+    return stored ? (JSON.parse(stored) as User).name : null;
   });
 
-  /* ---------- CHAT ID (FROM URL) ---------- */
+  /* ---------- CHAT ID ---------- */
   const [chatId, setChatId] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     return new URLSearchParams(window.location.search).get("c");
@@ -50,7 +49,7 @@ export default function ChatPage() {
   const [search, setSearch] = useState("");
   const [typing, setTyping] = useState("");
 
-  /* ================= REDIRECT IF NOT LOGGED IN ================= */
+  /* ================= AUTH ================= */
   useEffect(() => {
     if (!username) router.replace("/");
   }, [username, router]);
@@ -66,39 +65,43 @@ export default function ChatPage() {
       });
   }, [username]);
 
-  /* ================= LOAD MESSAGES ================= */
+  /* ================= LOAD MESSAGES + SEEN ================= */
   useEffect(() => {
-    if (!chatId) return;
+    if (!chatId || !username) return;
 
     fetch(`/api/messages?chatId=${chatId}`, { cache: "no-store" })
       .then((res) => res.json())
       .then((data: { messages: Message[] }) => {
         setMessages(data.messages);
 
-        // mark seen
-        fetch("/api/messages/seen", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chatId,
-            receiver: username,
-          }),
-        });
+        const hasUnread = data.messages.some(
+          (m) => m.receiver === username && !m.seen
+        );
+
+        if (hasUnread) {
+          fetch("/api/messages/seen", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chatId, receiver: username }),
+          });
+        }
       });
   }, [chatId, username]);
 
-  /* ================= PUSHER REALTIME ================= */
+  /* ================= REALTIME ================= */
   useEffect(() => {
     if (!chatId) return;
 
     const channel = pusherClient.subscribe(`chat-${chatId}`);
 
     channel.bind("new-message", (msg: Message) => {
-      setMessages((prev) => [...prev, msg]);
+      setMessages((prev) =>
+        prev.some((m) => m._id === msg._id) ? prev : [...prev, msg]
+      );
     });
 
-    channel.bind("typing", (data: { user: string; typing: boolean }) => {
-      setTyping(data.typing ? `${data.user} is typing…` : "");
+    channel.bind("typing", (d: { user: string; typing: boolean }) => {
+      setTyping(d.typing ? `${d.user} is typing…` : "");
     });
 
     channel.bind("seen", () => {
@@ -112,7 +115,7 @@ export default function ChatPage() {
     };
   }, [chatId]);
 
-  /* ================= SEARCH USER ================= */
+  /* ================= SEARCH ================= */
   const searchUser = async () => {
     if (!username || !search.trim()) return;
 
@@ -154,12 +157,12 @@ export default function ChatPage() {
   /* ================= SEND MESSAGE ================= */
   const sendMessage = async () => {
     if (!chatId || !username || !text.trim()) return;
-  
+
     const otherUser =
       chats.find((c) => c._id === chatId)?.participants.find(
         (p) => p !== username
       ) ?? "";
-  
+
     const res = await fetch("/api/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -170,15 +173,13 @@ export default function ChatPage() {
         text,
       }),
     });
-  
+
     const data: { message: Message } = await res.json();
-  
-    // ✅ IMMEDIATE UI UPDATE (OPTIMISTIC)
+
+    // ✅ OPTIMISTIC UPDATE (CRITICAL)
     setMessages((prev) => [...prev, data.message]);
-  
     setText("");
   };
-  
 
   /* ================= LOGOUT ================= */
   const logout = () => {
@@ -195,10 +196,10 @@ export default function ChatPage() {
   return (
     <div className="h-screen flex bg-[#ECE5DD] overflow-hidden">
 
-      {/* ================= CHAT LIST ================= */}
-      <div className="w-full md:w-1/3 bg-white flex flex-col">
+      {/* ===== CHAT LIST ===== */}
+      <div className="w-full md:w-1/3 bg-white flex flex-col border-r">
         <div className="h-14 bg-[#075E54] text-white flex items-center px-4">
-          <span className="font-medium">WhatsApp</span>
+          <span className="font-semibold">WhatsApp</span>
           <button onClick={logout} className="ml-auto text-sm">
             Logout
           </button>
@@ -228,16 +229,11 @@ export default function ChatPage() {
             return (
               <div
                 key={chat._id}
-                className="px-4 py-3 border-b flex items-center gap-3"
+                className="px-4 py-3 border-b flex items-center"
               >
-                <div className="w-10 h-10 rounded-full bg-gray-400 flex items-center justify-center text-white">
-                  {name?.[0]}
-                </div>
-
                 <div className="flex-1">
                   <p className="font-medium">{name}</p>
                 </div>
-
                 <button
                   onClick={() => {
                     window.history.pushState(
@@ -247,7 +243,7 @@ export default function ChatPage() {
                     );
                     setChatId(chat._id);
                   }}
-                  className="text-xl text-gray-500"
+                  className="text-gray-500"
                 >
                   ➤
                 </button>
@@ -257,9 +253,9 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* ================= CHAT WINDOW ================= */}
+      {/* ===== CHAT WINDOW ===== */}
       {chatId && (
-        <div className="fixed md:static inset-0 flex flex-col flex-1 bg-[#ECE5DD]">
+        <div className="fixed md:static inset-0 flex flex-col flex-1">
 
           <div className="h-14 bg-[#075E54] text-white flex items-center px-3 gap-3">
             <button

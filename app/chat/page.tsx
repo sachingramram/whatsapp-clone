@@ -46,6 +46,9 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
 
+  /* ---------- SEARCH ---------- */
+  const [search, setSearch] = useState("");
+
   /* ---------- VOICE ---------- */
   const [recording, setRecording] = useState(false);
   const [duration, setDuration] = useState(0);
@@ -118,6 +121,45 @@ export default function ChatPage() {
       pusherClient.unsubscribe(`chat-${chatId}`);
     };
   }, [chatId, username]);
+
+  /* ================= SEARCH USER ================= */
+  const searchUser = async () => {
+    if (!search.trim() || !username) return;
+
+    const res = await fetch("/api/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: search.trim() }),
+    });
+
+    if (!res.ok) {
+      alert("User not found");
+      return;
+    }
+
+    const data: { user: User } = await res.json();
+
+    const chatRes = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user1: username,
+        user2: data.user.name,
+      }),
+    });
+
+    const chatData: { chat: Chat } = await chatRes.json();
+
+    setChats((prev) =>
+      prev.find((c) => c._id === chatData.chat._id)
+        ? prev
+        : [...prev, chatData.chat]
+    );
+
+    setChatId(chatData.chat._id);
+    setIsChatOpen(true);
+    setSearch("");
+  };
 
   /* ================= SEND TEXT ================= */
   const sendMessage = async () => {
@@ -213,6 +255,22 @@ export default function ChatPage() {
           </button>
         </div>
 
+        {/* SEARCH BAR */}
+        <div className="p-2 border-b bg-gray-100 flex gap-2">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search exact username"
+            className="flex-1 rounded-full px-4 py-2 text-sm"
+          />
+          <button
+            onClick={searchUser}
+            className="bg-[#075E54] text-white px-4 rounded-full text-sm"
+          >
+            Go
+          </button>
+        </div>
+
         <div className="flex-1 overflow-y-auto">
           {chats.map((c) => {
             const name = c.participants.find(
@@ -288,7 +346,6 @@ export default function ChatPage() {
                     m.text
                   )}
 
-                  {/* TIME */}
                   <span className="block text-[10px] text-gray-500 text-right mt-1">
                     {formatTime(m.createdAt)}
                   </span>

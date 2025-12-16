@@ -42,7 +42,8 @@ export default function ChatPage() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [chatId, setChatId] = useState<string | null>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const [loadingChats, setLoadingChats] = useState(true);
+  const [hasLoadedChats, setHasLoadedChats] = useState(false);
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
 
@@ -81,10 +82,11 @@ export default function ChatPage() {
       .then((r) => r.json())
       .then((d: { chats: Chat[] }) => {
         setChats(d.chats);
-        setLoadingChats(false); // ✅ allowed
+        setHasLoadedChats(true); // ✅ IMPORTANT
       })
-      .catch(() => setLoadingChats(false)); // ✅ allowed
+      .catch(() => setHasLoadedChats(true));
   }, [username]);
+  
   
 
   /* ================= LOAD MESSAGES ================= */
@@ -288,50 +290,57 @@ export default function ChatPage() {
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          {chats.map((c) => {
-            const name = c.participants.find(
-              (p) => p !== username
+  {!hasLoadedChats ? (
+    <p className="p-4 text-gray-400 text-sm">
+      Loading chats...
+    </p>
+  ) : (
+    chats.map((c) => {
+      const name = c.participants.find(
+        (p) => p !== username
+      );
+
+      return (
+        <div
+          key={c._id}
+          onClick={() => {
+            setChatId(c._id);
+            setIsChatOpen(true);
+
+            fetch("/api/messages/seen", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                chatId: c._id,
+                user: username,
+              }),
+            });
+
+            // ✅ mark unread as 0 when opening
+            setChats((prev) =>
+              prev.map((x) =>
+                x._id === c._id
+                  ? { ...x, unread: 0 }
+                  : x
+              )
             );
-            return (
-              <div
-                key={c._id}
-                onClick={() => {
-                  setChatId(c._id);
-                  setIsChatOpen(true);
+          }}
+          className="px-4 py-3 border-b cursor-pointer hover:bg-gray-100 flex justify-between items-center"
+        >
+          <span>{name}</span>
 
-                  fetch("/api/messages/seen", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      chatId: c._id,
-                      user: username,
-                    }),
-                  });
-
-                  // ✅ mark unread as 0 when opening
-                  setChats((prev) =>
-                    prev.map((x) =>
-                      x._id === c._id
-                        ? { ...x, unread: 0 }
-                        : x
-                    )
-                  );
-                }}
-                className="px-4 py-3 border-b cursor-pointer hover:bg-gray-100 flex justify-between items-center"
-              >
-                <span>{name}</span>
-
-                {/* 🔴 UNREAD BADGE */}
-                {c.unread !== undefined && c.unread > 0 && (
-  <span className="bg-green-500 text-white text-xs px-2 py-0.5 rounded-full">
-    {c.unread}
-  </span>
-)}
-
-              </div>
-            );
-          })}
+          {/* 🔴 UNREAD BADGE */}
+          {c.unread !== undefined && c.unread > 0 && (
+            <span className="bg-green-500 text-white text-xs px-2 py-0.5 rounded-full">
+              {c.unread}
+            </span>
+          )}
         </div>
+      );
+    })
+  )}
+</div>
+
       </div>
 
       {/* ================= CHAT WINDOW ================= */}

@@ -22,22 +22,15 @@ interface Message {
 /* ================= PAGE ================= */
 
 export default function ChatPage() {
-  /* ---------- USERNAME (LAZY INIT) ---------- */
+  /* ---------- USER ---------- */
   const [username] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     const stored = localStorage.getItem("user");
     if (!stored) return null;
-    const parsed = JSON.parse(stored) as User;
-    return parsed.name;
+    return (JSON.parse(stored) as User).name;
   });
 
-  /* ---------- CHATS (LAZY INIT) ---------- */
-  const [chats, setChats] = useState<Chat[]>(() => {
-    if (typeof window === "undefined") return [];
-    const cached = localStorage.getItem("chat_list");
-    return cached ? (JSON.parse(cached) as Chat[]) : [];
-  });
-
+  const [chats, setChats] = useState<Chat[]>([]);
   const [activeChat, setActiveChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
@@ -50,7 +43,7 @@ export default function ChatPage() {
     }
   }, [username]);
 
-  /* ================= FETCH CHAT LIST (SERVER ONLY) ================= */
+  /* ================= LOAD CHATS ================= */
   useEffect(() => {
     if (!username) return;
 
@@ -60,10 +53,6 @@ export default function ChatPage() {
       .then((res) => res.json())
       .then((data: { chats: Chat[] }) => {
         setChats(data.chats);
-        localStorage.setItem(
-          "chat_list",
-          JSON.stringify(data.chats)
-        );
       });
   }, [username]);
 
@@ -108,20 +97,11 @@ export default function ChatPage() {
 
     const chatData: { chat: Chat } = await chatRes.json();
 
-    setChats((prev) => {
-      const updated = prev.find(
-        (c) => c._id === chatData.chat._id
-      )
+    setChats((prev) =>
+      prev.find((c) => c._id === chatData.chat._id)
         ? prev
-        : [...prev, chatData.chat];
-
-      localStorage.setItem(
-        "chat_list",
-        JSON.stringify(updated)
-      );
-
-      return updated;
-    });
+        : [...prev, chatData.chat]
+    );
 
     setActiveChat(chatData.chat);
     setSearch("");
@@ -149,21 +129,20 @@ export default function ChatPage() {
   /* ================= LOGOUT ================= */
   const logout = () => {
     localStorage.removeItem("user");
-    localStorage.removeItem("chat_list");
     window.location.href = "/";
   };
 
   const otherUser =
     activeChat?.participants.find(
       (p) => p !== username
-    ) ?? "";
+    ) ?? "Select chat";
 
   /* ================= UI ================= */
 
   return (
-    <div className="h-screen flex bg-gray-100 relative">
-      {/* ===== CHAT LIST (ALWAYS VISIBLE) ===== */}
-      <div className="w-full md:w-1/3 flex flex-col bg-white border-r">
+    <div className="h-screen flex bg-gray-100">
+      {/* ===== LEFT: CHAT LIST ===== */}
+      <div className="w-1/3 min-w-[280px] flex flex-col bg-white border-r">
         <div className="bg-green-600 text-white p-4 flex justify-between">
           <h1 className="font-semibold">WhatsApp</h1>
           <button onClick={logout}>Logout</button>
@@ -186,9 +165,7 @@ export default function ChatPage() {
 
         <div className="flex-1 overflow-y-auto">
           {chats.length === 0 && (
-            <p className="p-4 text-gray-400">
-              No chats yet
-            </p>
+            <p className="p-4 text-gray-400">No chats yet</p>
           )}
 
           {chats.map((chat) => {
@@ -199,7 +176,11 @@ export default function ChatPage() {
               <div
                 key={chat._id}
                 onClick={() => setActiveChat(chat)}
-                className="p-4 border-b cursor-pointer hover:bg-gray-100"
+                className={`p-4 border-b cursor-pointer ${
+                  activeChat?._id === chat._id
+                    ? "bg-gray-100"
+                    : ""
+                }`}
               >
                 {name}
               </div>
@@ -208,21 +189,21 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* ===== CHAT WINDOW (OVERLAY ON MOBILE) ===== */}
-      {activeChat && (
-        <div className="fixed inset-0 md:static md:flex flex-1 flex-col bg-gray-100 z-50">
-          <div className="bg-green-600 text-white p-4 flex items-center gap-3">
-            <button
-              className="md:hidden"
-              onClick={() => setActiveChat(null)}
-            >
-              ←
-            </button>
-            <h2 className="font-semibold">{otherUser}</h2>
-          </div>
+      {/* ===== RIGHT: CHAT WINDOW ===== */}
+      <div className="flex-1 flex flex-col">
+        <div className="bg-green-600 text-white p-4">
+          <h2 className="font-semibold">{otherUser}</h2>
+        </div>
 
-          <div className="flex-1 p-4 overflow-y-auto">
-            {messages.map((msg) => (
+        <div className="flex-1 p-4 overflow-y-auto">
+          {!activeChat && (
+            <p className="text-gray-400 text-center mt-10">
+              Select a chat to start messaging
+            </p>
+          )}
+
+          {activeChat &&
+            messages.map((msg) => (
               <div
                 key={msg._id}
                 className={`mb-2 flex ${
@@ -232,7 +213,7 @@ export default function ChatPage() {
                 }`}
               >
                 <div
-                  className={`px-3 py-2 rounded ${
+                  className={`px-3 py-2 rounded max-w-[70%] ${
                     msg.sender === username
                       ? "bg-green-500 text-white"
                       : "bg-white"
@@ -242,8 +223,9 @@ export default function ChatPage() {
                 </div>
               </div>
             ))}
-          </div>
+        </div>
 
+        {activeChat && (
           <div className="p-3 bg-white border-t flex gap-2">
             <input
               value={text}
@@ -258,8 +240,8 @@ export default function ChatPage() {
               Send
             </button>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

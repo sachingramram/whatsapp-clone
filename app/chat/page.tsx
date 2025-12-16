@@ -22,19 +22,24 @@ interface Message {
 /* ================= COMPONENT ================= */
 
 export default function ChatPage() {
+  /* ---------- CURRENT USER ---------- */
   const [currentUser] = useState<User | null>(() => {
     if (typeof window === "undefined") return null;
     const stored = localStorage.getItem("user");
     return stored ? (JSON.parse(stored) as User) : null;
   });
 
-  const [search, setSearch] = useState("");
+  /* ---------- STATES ---------- */
+  const [search, setSearch] = useState<string>("");
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChat, setActiveChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [text, setText] = useState("");
+  const [text, setText] = useState<string>("");
 
-  /* ================= LOAD CHATS ================= */
+  // 🔥 MOBILE UI STATE (IMPORTANT)
+  const [showChatList, setShowChatList] = useState<boolean>(true);
+
+  /* ================= LOAD CHATS (SIDEBAR PERSIST) ================= */
   useEffect(() => {
     if (!currentUser) return;
 
@@ -42,6 +47,9 @@ export default function ChatPage() {
       .then((res) => res.json())
       .then((data: { chats: Chat[] }) => {
         setChats(data.chats);
+      })
+      .catch(() => {
+        console.error("Failed to load chats");
       });
   }, [currentUser]);
 
@@ -53,10 +61,13 @@ export default function ChatPage() {
       .then((res) => res.json())
       .then((data: { messages: Message[] }) => {
         setMessages(data.messages);
+      })
+      .catch(() => {
+        console.error("Failed to load messages");
       });
   }, [activeChat]);
 
-  /* ================= SEARCH USER ================= */
+  /* ================= SEARCH USER (EXACT NAME) ================= */
   const searchUser = async () => {
     if (!currentUser || !search.trim()) return;
 
@@ -90,6 +101,7 @@ export default function ChatPage() {
     });
 
     setActiveChat(chatData.chat);
+    setShowChatList(false); // 📱 mobile → open chat
     setSearch("");
   };
 
@@ -108,6 +120,7 @@ export default function ChatPage() {
     });
 
     const data: { message: Message } = await res.json();
+
     setMessages((prev) => [...prev, data.message]);
     setText("");
   };
@@ -126,12 +139,12 @@ export default function ChatPage() {
   /* ================= UI ================= */
 
   return (
-    <div className="h-screen bg-gray-100 flex">
-      {/* ================= CHAT LIST (MOBILE + DESKTOP) ================= */}
+    <div className="h-screen flex bg-gray-100">
+      {/* ================= CHAT LIST ================= */}
       <div
         className={`${
-          activeChat ? "hidden md:flex" : "flex"
-        } w-full md:w-1/3 flex-col bg-white border-r`}
+          showChatList ? "flex" : "hidden"
+        } md:flex w-full md:w-1/3 flex-col bg-white border-r`}
       >
         {/* Header */}
         <div className="bg-green-600 text-white p-4 flex justify-between items-center">
@@ -142,7 +155,7 @@ export default function ChatPage() {
         </div>
 
         {/* Search */}
-        <div className="p-2 border-b">
+        <div className="p-3 border-b">
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -157,7 +170,7 @@ export default function ChatPage() {
           </button>
         </div>
 
-        {/* Chats */}
+        {/* Chat History */}
         <div className="flex-1 overflow-y-auto">
           {chats.map((chat) => {
             const name = chat.participants.find(
@@ -167,7 +180,10 @@ export default function ChatPage() {
             return (
               <div
                 key={chat._id}
-                onClick={() => setActiveChat(chat)}
+                onClick={() => {
+                  setActiveChat(chat);
+                  setShowChatList(false); // 📱 mobile
+                }}
                 className="p-4 border-b cursor-pointer hover:bg-gray-100"
               >
                 <p className="font-medium">{name}</p>
@@ -183,61 +199,70 @@ export default function ChatPage() {
       {/* ================= CHAT WINDOW ================= */}
       <div
         className={`${
-          activeChat ? "flex" : "hidden md:flex"
-        } flex-1 flex-col`}
+          showChatList ? "hidden" : "flex"
+        } md:flex flex-1 flex-col`}
       >
-        {/* Header */}
-        <div className="bg-green-600 text-white p-4 flex items-center gap-3">
-          {/* Back (mobile) */}
-          <button
-            className="md:hidden"
-            onClick={() => setActiveChat(null)}
-          >
-            ←
-          </button>
-
-          <h2 className="font-semibold">{otherUser}</h2>
-        </div>
-
-        {/* Messages */}
-        <div className="flex-1 p-4 overflow-y-auto bg-gray-100">
-          {messages.map((msg) => (
-            <div
-              key={msg._id}
-              className={`mb-2 flex ${
-                msg.sender === currentUser?.name
-                  ? "justify-end"
-                  : "justify-start"
-              }`}
-            >
-              <div
-                className={`px-3 py-2 rounded-lg text-sm max-w-[70%] ${
-                  msg.sender === currentUser?.name
-                    ? "bg-green-500 text-white"
-                    : "bg-white"
-                }`}
+        {!activeChat ? (
+          <div className="flex-1 flex items-center justify-center text-gray-500">
+            Select a chat to start messaging
+          </div>
+        ) : (
+          <>
+            {/* Header */}
+            <div className="bg-green-600 text-white p-4 flex items-center gap-3">
+              <button
+                className="md:hidden"
+                onClick={() => {
+                  setActiveChat(null);
+                  setShowChatList(true); // 📱 back to list
+                }}
               >
-                {msg.text}
-              </div>
+                ←
+              </button>
+              <h2 className="font-semibold">{otherUser}</h2>
             </div>
-          ))}
-        </div>
 
-        {/* Input */}
-        <div className="p-3 bg-white border-t flex gap-2">
-          <input
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Type a message"
-            className="flex-1 border rounded-full px-4 py-2 text-sm"
-          />
-          <button
-            onClick={sendMessage}
-            className="bg-green-600 text-white px-4 rounded-full"
-          >
-            Send
-          </button>
-        </div>
+            {/* Messages */}
+            <div className="flex-1 p-4 overflow-y-auto bg-gray-100">
+              {messages.map((msg) => (
+                <div
+                  key={msg._id}
+                  className={`mb-2 flex ${
+                    msg.sender === currentUser?.name
+                      ? "justify-end"
+                      : "justify-start"
+                  }`}
+                >
+                  <div
+                    className={`px-3 py-2 rounded-lg text-sm max-w-[70%] ${
+                      msg.sender === currentUser?.name
+                        ? "bg-green-500 text-white"
+                        : "bg-white"
+                    }`}
+                  >
+                    {msg.text}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Input */}
+            <div className="p-3 bg-white border-t flex gap-2">
+              <input
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder="Type a message"
+                className="flex-1 border rounded-full px-4 py-2 text-sm"
+              />
+              <button
+                onClick={sendMessage}
+                className="bg-green-600 text-white px-4 rounded-full"
+              >
+                Send
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

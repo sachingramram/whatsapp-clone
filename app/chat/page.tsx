@@ -145,8 +145,19 @@ export default function ChatPage() {
 
         {/* Header */}
         <div className="h-14 bg-[#075E54] text-white flex items-center px-4 font-medium">
-          WhatsApp
-        </div>
+  <span>WhatsApp</span>
+
+  <button
+    onClick={() => {
+      localStorage.removeItem("user");
+      window.location.href = "/";
+    }}
+    className="ml-auto text-sm opacity-90"
+  >
+    Logout
+  </button>
+</div>
+
 
         {/* Search */}
         <div className="p-2 bg-gray-100 flex gap-2">

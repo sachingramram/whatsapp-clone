@@ -22,21 +22,19 @@ interface Message {
 /* ================= COMPONENT ================= */
 
 export default function ChatPage() {
-  /* ---------- CURRENT USER (SAFE INIT) ---------- */
   const [currentUser] = useState<User | null>(() => {
     if (typeof window === "undefined") return null;
     const stored = localStorage.getItem("user");
     return stored ? (JSON.parse(stored) as User) : null;
   });
 
-  /* ---------- STATES ---------- */
-  const [search, setSearch] = useState<string>("");
+  const [search, setSearch] = useState("");
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChat, setActiveChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [text, setText] = useState<string>("");
+  const [text, setText] = useState("");
 
-  /* ================= LOAD CHATS ON REFRESH ================= */
+  /* ================= LOAD CHATS ================= */
   useEffect(() => {
     if (!currentUser) return;
 
@@ -44,13 +42,10 @@ export default function ChatPage() {
       .then((res) => res.json())
       .then((data: { chats: Chat[] }) => {
         setChats(data.chats);
-      })
-      .catch(() => {
-        console.error("Failed to load chats");
       });
   }, [currentUser]);
 
-  /* ================= LOAD MESSAGES WHEN CHAT SELECTED ================= */
+  /* ================= LOAD MESSAGES ================= */
   useEffect(() => {
     if (!activeChat) return;
 
@@ -58,13 +53,10 @@ export default function ChatPage() {
       .then((res) => res.json())
       .then((data: { messages: Message[] }) => {
         setMessages(data.messages);
-      })
-      .catch(() => {
-        console.error("Failed to load messages");
       });
   }, [activeChat]);
 
-  /* ================= SEARCH USER (EXACT NAME) ================= */
+  /* ================= SEARCH USER ================= */
   const searchUser = async () => {
     if (!currentUser || !search.trim()) return;
 
@@ -116,7 +108,6 @@ export default function ChatPage() {
     });
 
     const data: { message: Message } = await res.json();
-
     setMessages((prev) => [...prev, data.message]);
     setText("");
   };
@@ -127,38 +118,49 @@ export default function ChatPage() {
     window.location.href = "/";
   };
 
+  const otherUser =
+    activeChat?.participants.find(
+      (p) => p !== currentUser?.name
+    ) ?? "";
+
   /* ================= UI ================= */
+
   return (
-    <div className="h-screen flex">
-      {/* ===== SIDEBAR ===== */}
-      <div className="w-1/4 border-r p-3 flex flex-col">
-        <div className="flex justify-between items-center mb-3">
-          <h2 className="font-bold">Chats</h2>
-          <button
-            onClick={logout}
-            className="text-sm text-red-500"
-          >
+    <div className="h-screen bg-gray-100 flex">
+      {/* ================= CHAT LIST (MOBILE + DESKTOP) ================= */}
+      <div
+        className={`${
+          activeChat ? "hidden md:flex" : "flex"
+        } w-full md:w-1/3 flex-col bg-white border-r`}
+      >
+        {/* Header */}
+        <div className="bg-green-600 text-white p-4 flex justify-between items-center">
+          <h1 className="font-semibold text-lg">WhatsApp</h1>
+          <button onClick={logout} className="text-sm">
             Logout
           </button>
         </div>
 
-        <input
-          placeholder="Search exact username"
-          className="w-full border p-2 mb-2"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+        {/* Search */}
+        <div className="p-2 border-b">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search exact username"
+            className="w-full border rounded p-2 text-sm"
+          />
+          <button
+            onClick={searchUser}
+            className="w-full mt-2 bg-green-600 text-white py-2 rounded text-sm"
+          >
+            Search
+          </button>
+        </div>
 
-        <button
-          onClick={searchUser}
-          className="w-full bg-green-600 text-white py-2 rounded mb-3"
-        >
-          Search
-        </button>
-
+        {/* Chats */}
         <div className="flex-1 overflow-y-auto">
           {chats.map((chat) => {
-            const otherUser = chat.participants.find(
+            const name = chat.participants.find(
               (p) => p !== currentUser?.name
             );
 
@@ -166,60 +168,76 @@ export default function ChatPage() {
               <div
                 key={chat._id}
                 onClick={() => setActiveChat(chat)}
-                className={`p-2 border-b cursor-pointer ${
-                  activeChat?._id === chat._id
-                    ? "bg-green-100"
-                    : ""
-                }`}
+                className="p-4 border-b cursor-pointer hover:bg-gray-100"
               >
-                {otherUser}
+                <p className="font-medium">{name}</p>
+                <p className="text-xs text-gray-500">
+                  Tap to chat
+                </p>
               </div>
             );
           })}
         </div>
       </div>
 
-      {/* ===== CHAT WINDOW ===== */}
-      <div className="flex-1 flex flex-col">
-        {!activeChat ? (
-          <div className="flex-1 flex items-center justify-center text-gray-500">
-            Select a chat to start messaging
-          </div>
-        ) : (
-          <>
-            <div className="flex-1 p-4 overflow-y-auto">
-              {messages.map((msg) => (
-                <div
-                  key={msg._id}
-                  className={`mb-2 ${
-                    msg.sender === currentUser?.name
-                      ? "text-right"
-                      : "text-left"
-                  }`}
-                >
-                  <span className="inline-block bg-gray-200 px-3 py-1 rounded">
-                    {msg.text}
-                  </span>
-                </div>
-              ))}
-            </div>
+      {/* ================= CHAT WINDOW ================= */}
+      <div
+        className={`${
+          activeChat ? "flex" : "hidden md:flex"
+        } flex-1 flex-col`}
+      >
+        {/* Header */}
+        <div className="bg-green-600 text-white p-4 flex items-center gap-3">
+          {/* Back (mobile) */}
+          <button
+            className="md:hidden"
+            onClick={() => setActiveChat(null)}
+          >
+            ←
+          </button>
 
-            <div className="p-3 border-t flex gap-2">
-              <input
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                className="flex-1 border p-2 rounded"
-                placeholder="Type a message"
-              />
-              <button
-                onClick={sendMessage}
-                className="bg-green-600 text-white px-4 rounded"
+          <h2 className="font-semibold">{otherUser}</h2>
+        </div>
+
+        {/* Messages */}
+        <div className="flex-1 p-4 overflow-y-auto bg-gray-100">
+          {messages.map((msg) => (
+            <div
+              key={msg._id}
+              className={`mb-2 flex ${
+                msg.sender === currentUser?.name
+                  ? "justify-end"
+                  : "justify-start"
+              }`}
+            >
+              <div
+                className={`px-3 py-2 rounded-lg text-sm max-w-[70%] ${
+                  msg.sender === currentUser?.name
+                    ? "bg-green-500 text-white"
+                    : "bg-white"
+                }`}
               >
-                Send
-              </button>
+                {msg.text}
+              </div>
             </div>
-          </>
-        )}
+          ))}
+        </div>
+
+        {/* Input */}
+        <div className="p-3 bg-white border-t flex gap-2">
+          <input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Type a message"
+            className="flex-1 border rounded-full px-4 py-2 text-sm"
+          />
+          <button
+            onClick={sendMessage}
+            className="bg-green-600 text-white px-4 rounded-full"
+          >
+            Send
+          </button>
+        </div>
       </div>
     </div>
   );

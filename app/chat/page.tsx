@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -25,7 +27,7 @@ interface Message {
 export default function ChatPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const chatId = searchParams.get("c"); // 🔥 source of truth
+  const chatId = searchParams.get("c"); // URL is source of truth
 
   /* ---------- USER ---------- */
   const [username] = useState<string | null>(() => {
@@ -58,14 +60,14 @@ export default function ChatPage() {
       .then((data: { chats: Chat[] }) => {
         setChats(data.chats);
 
-        // 🔥 mobile fix: auto-open last or first chat
+        // auto-open first chat if none selected
         if (!chatId && data.chats.length > 0) {
           router.replace(`/chat?c=${data.chats[0]._id}`);
         }
       });
   }, [username, chatId, router]);
 
-  /* ================= LOAD MESSAGES (NO STATE CLEAR) ================= */
+  /* ================= LOAD MESSAGES ================= */
   useEffect(() => {
     if (!chatId) return;
 

@@ -50,7 +50,7 @@ export default function ChatPage() {
     }
   }, [username]);
 
-  /* ================= FETCH CHAT LIST (SERVER ONLY) ================= */
+  /* ================= FETCH CHAT LIST + RESTORE LAST CHAT ================= */
   useEffect(() => {
     if (!username) return;
 
@@ -64,6 +64,17 @@ export default function ChatPage() {
           "chat_list",
           JSON.stringify(data.chats)
         );
+
+        // 🔥 MOBILE FIX: restore last active chat
+        const lastChatId = localStorage.getItem("last_chat_id");
+        if (lastChatId) {
+          const foundChat = data.chats.find(
+            (c) => c._id === lastChatId
+          );
+          if (foundChat) {
+            setActiveChat(foundChat);
+          }
+        }
       });
   }, [username]);
 
@@ -124,6 +135,7 @@ export default function ChatPage() {
     });
 
     setActiveChat(chatData.chat);
+    localStorage.setItem("last_chat_id", chatData.chat._id);
     setSearch("");
   };
 
@@ -150,6 +162,7 @@ export default function ChatPage() {
   const logout = () => {
     localStorage.removeItem("user");
     localStorage.removeItem("chat_list");
+    localStorage.removeItem("last_chat_id");
     window.location.href = "/";
   };
 
@@ -162,7 +175,7 @@ export default function ChatPage() {
 
   return (
     <div className="h-screen flex bg-gray-100 relative">
-      {/* ===== CHAT LIST (ALWAYS VISIBLE) ===== */}
+      {/* ===== CHAT LIST ===== */}
       <div className="w-full md:w-1/3 flex flex-col bg-white border-r">
         <div className="bg-green-600 text-white p-4 flex justify-between">
           <h1 className="font-semibold">WhatsApp</h1>
@@ -198,7 +211,13 @@ export default function ChatPage() {
             return (
               <div
                 key={chat._id}
-                onClick={() => setActiveChat(chat)}
+                onClick={() => {
+                  setActiveChat(chat);
+                  localStorage.setItem(
+                    "last_chat_id",
+                    chat._id
+                  );
+                }}
                 className="p-4 border-b cursor-pointer hover:bg-gray-100"
               >
                 {name}
@@ -208,7 +227,7 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* ===== CHAT WINDOW (OVERLAY ON MOBILE) ===== */}
+      {/* ===== CHAT WINDOW ===== */}
       {activeChat && (
         <div className="fixed inset-0 md:static md:flex flex-1 flex-col bg-gray-100 z-50">
           <div className="bg-green-600 text-white p-4 flex items-center gap-3">

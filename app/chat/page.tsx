@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { pusherClient } from "@/lib/pusherClient";
 
@@ -13,6 +13,7 @@ interface User {
 interface Chat {
   _id: string;
   participants: string[];
+  unread?: number;
 }
 
 interface Message {
@@ -37,7 +38,7 @@ export default function ChatPage() {
     return stored ? (JSON.parse(stored) as User).name : null;
   });
 
-  /* ---------- CHAT ID ---------- */
+  /* ---------- CHAT ---------- */
   const [chatId, setChatId] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     return new URLSearchParams(window.location.search).get("c");
@@ -47,67 +48,67 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
   const [search, setSearch] = useState("");
-  const [typing, setTyping] = useState("");
+  const [typingText, setTypingText] = useState("");
+
+  const typingTimeout = useRef<NodeJS.Timeout | null>(null);
 
   /* ================= AUTH ================= */
   useEffect(() => {
     if (!username) router.replace("/");
   }, [username, router]);
 
-  /* ================= LOAD CHAT LIST ================= */
+  /* ================= LOAD CHATS ================= */
   useEffect(() => {
     if (!username) return;
 
     fetch(`/api/chat/list?user=${username}`, { cache: "no-store" })
-      .then((res) => res.json())
-      .then((data: { chats: Chat[] }) => {
-        setChats(data.chats);
-      });
+      .then((r) => r.json())
+      .then((d: { chats: Chat[] }) => setChats(d.chats));
   }, [username]);
 
   /* ================= LOAD MESSAGES ================= */
   useEffect(() => {
-    if (!chatId || !username) return;
+    if (!chatId) return;
 
     fetch(`/api/messages?chatId=${chatId}`, { cache: "no-store" })
-      .then((res) => res.json())
-      .then((data: { messages: Message[] }) => {
-        setMessages(data.messages);
-      });
-  }, [chatId, username]);
+      .then((r) => r.json())
+      .then((d: { messages: Message[] }) => setMessages(d.messages));
+  }, [chatId]);
 
-  /* ================= SEEN (DELAYED, SAFE) ================= */
+  /* ================= MARK SEEN ================= */
   useEffect(() => {
     if (!chatId || !username) return;
 
-    const timer = setTimeout(() => {
+    const t = setTimeout(() => {
       fetch("/api/messages/seen", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chatId,
-          receiver: username,
-        }),
+        body: JSON.stringify({ chatId, receiver: username }),
       });
-    }, 600); // delay = stable UI (WhatsApp style)
+    }, 500);
 
-    return () => clearTimeout(timer);
-  }, [chatId, username]);
+    return () => clearTimeout(t);
+  }, [chatId, username, messages.length]);
 
-  /* ================= REALTIME (PUSHER) ================= */
+  /* ================= REALTIME ================= */
   useEffect(() => {
-    if (!chatId) return;
+    if (!chatId || !username) return;
 
     const channel = pusherClient.subscribe(`chat-${chatId}`);
 
-    // 🔥 receiver only
     channel.bind("new-message", (msg: Message) => {
-      if (msg.sender === username) return; // IMPORTANT FIX
+      if (msg.sender === username) return;
+
+      // 🔊 play sound
+      new Audio("/sounds/message.mp3").play().catch(() => {});
+
       setMessages((prev) => [...prev, msg]);
     });
 
     channel.bind("typing", (d: { user: string; typing: boolean }) => {
-      setTyping(d.typing ? `${d.user} is typing…` : "");
+      if (d.user !== username) {
+        setTypingText(d.typing ? `${d.user} is typing…` : "");
+      }
     });
 
     channel.bind("seen", () => {
@@ -121,82 +122,98 @@ export default function ChatPage() {
     };
   }, [chatId, username]);
 
-  /* ================= SEARCH USER ================= */
-  const searchUser = async () => {
-    if (!username || !search.trim()) return;
+  /* ================= TYPING SEND ================= */
+  useEffect(() => {
+    if (!chatId || !username) return;
 
-    const res = await fetch("/api/search", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: search.trim() }),
-    });
-
-    if (!res.ok) {
-      alert("User not found");
-      return;
+    if (typingTimeout.current) {
+      clearTimeout(typingTimeout.current);
     }
 
-    const data: { user: User } = await res.json();
-
-    const chatRes = await fetch("/api/chat", {
+    fetch("/api/typing", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        user1: username,
-        user2: data.user.name,
+        chatId,
+        user: username,
+        typing: text.length > 0,
       }),
     });
 
-    const chatData: { chat: Chat } = await chatRes.json();
+    typingTimeout.current = setTimeout(() => {
+      fetch("/api/typing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chatId,
+          user: username,
+          typing: false,
+        }),
+      });
+    }, 800);
+  }, [text, chatId, username]);
 
-    setChats((prev) =>
-      prev.find((c) => c._id === chatData.chat._id)
-        ? prev
-        : [...prev, chatData.chat]
+  /* ================= SEARCH USER ================= */
+  const searchUser = async () => {
+    if (!search.trim() || !username) return;
+
+    const r = await fetch("/api/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: search }),
+    });
+
+    if (!r.ok) return alert("User not found");
+
+    const d = await r.json();
+
+    const cr = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user1: username, user2: d.user.name }),
+    });
+
+    const cd = await cr.json();
+
+    setChats((p) =>
+      p.find((c) => c._id === cd.chat._id)
+        ? p
+        : [...p, cd.chat]
     );
 
-    window.history.pushState(null, "", `/chat?c=${chatData.chat._id}`);
-    setChatId(chatData.chat._id);
+    window.history.pushState(null, "", `/chat?c=${cd.chat._id}`);
+    setChatId(cd.chat._id);
     setSearch("");
   };
 
   /* ================= SEND MESSAGE ================= */
   const sendMessage = async () => {
-    if (!chatId || !username || !text.trim()) return;
-  
-    const otherUser =
+    if (!text.trim() || !chatId || !username) return;
+
+    const other =
       chats.find((c) => c._id === chatId)?.participants.find(
         (p) => p !== username
-      );
-  
-    if (!otherUser) {
-      alert("Chat not ready yet. Try again.");
-      return;
-    }
-  
-    const res = await fetch("/api/messages", {
+      ) ?? "";
+
+    if (!other) return alert("Chat not ready");
+
+    const r = await fetch("/api/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         chatId,
         sender: username,
-        receiver: otherUser,
+        receiver: other,
         text,
       }),
     });
-  
-    if (!res.ok) {
-        console.error("Send failed", res.status);
-      return;
-    }
-  
-    const data = await res.json();
-  
-    // ✅ sender instant UI
-    setMessages((prev) => [...prev, data.message]);
+
+    if (!r.ok) return alert("Send failed");
+
+    const d = await r.json();
+    setMessages((p) => [...p, d.message]);
     setText("");
   };
-  
 
   /* ================= LOGOUT ================= */
   const logout = () => {
@@ -211,11 +228,11 @@ export default function ChatPage() {
   /* ================= UI ================= */
 
   return (
-    <div className="h-screen flex bg-[#ECE5DD] overflow-hidden">
-      {/* ===== CHAT LIST ===== */}
+    <div className="h-screen flex bg-[#ECE5DD]">
+      {/* CHAT LIST */}
       <div className="w-full md:w-1/3 bg-white flex flex-col border-r">
         <div className="h-14 bg-[#075E54] text-white flex items-center px-4">
-          <span className="font-semibold">WhatsApp</span>
+          WhatsApp
           <button onClick={logout} className="ml-auto text-sm">
             Logout
           </button>
@@ -225,8 +242,8 @@ export default function ChatPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search exact username"
             className="flex-1 rounded-full px-4 py-2 text-sm"
+            placeholder="Search exact username"
           />
           <button
             onClick={searchUser}
@@ -237,25 +254,18 @@ export default function ChatPage() {
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          {chats.map((chat) => {
-            const name = chat.participants.find(
-              (p) => p !== username
-            );
-
+          {chats.map((c) => {
+            const n = c.participants.find((p) => p !== username);
             return (
               <div
-                key={chat._id}
-                className="px-4 py-3 border-b flex items-center justify-between"
+                key={c._id}
+                className="px-4 py-3 border-b flex justify-between"
               >
-                <span className="font-medium">{name}</span>
+                <span>{n}</span>
                 <button
                   onClick={() => {
-                    window.history.pushState(
-                      null,
-                      "",
-                      `/chat?c=${chat._id}`
-                    );
-                    setChatId(chat._id);
+                    window.history.pushState(null, "", `/chat?c=${c._id}`);
+                    setChatId(c._id);
                   }}
                 >
                   ➤
@@ -266,12 +276,12 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* ===== CHAT WINDOW ===== */}
+      {/* CHAT WINDOW */}
       {chatId && (
-        <div className="absolute md:static inset-0 flex flex-col flex-1 bg-[#ECE5DD]">
-          <div className="h-14 bg-[#075E54] text-white flex items-center px-3 gap-3">
+        <div className="flex-1 flex flex-col">
+          <div className="h-14 bg-[#075E54] text-white flex items-center px-4">
             <button
-              className="md:hidden"
+              className="md:hidden mr-2"
               onClick={() => {
                 window.history.pushState(null, "", "/chat");
                 setChatId(null);
@@ -279,41 +289,41 @@ export default function ChatPage() {
             >
               ←
             </button>
-            <span className="font-medium">{otherUser}</span>
+            {otherUser}
           </div>
 
-          {typing && (
-            <p className="text-xs text-gray-500 px-4 py-1">
-              {typing}
-            </p>
+          {typingText && (
+            <div className="text-xs text-gray-600 px-4 py-1">
+              {typingText}
+            </div>
           )}
 
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            {messages.map((msg) => (
+            {messages.map((m) => (
               <div
-                key={msg._id}
+                key={m._id}
                 className={`flex ${
-                  msg.sender === username
+                  m.sender === username
                     ? "justify-end"
                     : "justify-start"
                 }`}
               >
                 <div
-                  className={`px-3 py-2 rounded-lg max-w-[75%] text-sm ${
-                    msg.sender === username
+                  className={`px-3 py-2 rounded-lg max-w-[70%] text-sm ${
+                    m.sender === username
                       ? "bg-[#DCF8C6]"
                       : "bg-white"
                   }`}
                 >
-                  <p>{msg.text}</p>
-                  <p className="text-[10px] text-gray-500 text-right">
-                    {new Date(msg.createdAt).toLocaleTimeString([], {
+                  {m.text}
+                  <div className="text-[10px] text-right text-gray-500">
+                    {new Date(m.createdAt).toLocaleTimeString([], {
                       hour: "2-digit",
                       minute: "2-digit",
                     })}
-                    {msg.sender === username &&
-                      (msg.seen ? " ✓✓" : " ✓")}
-                  </p>
+                    {m.sender === username &&
+                      (m.seen ? " ✓✓" : " ✓")}
+                  </div>
                 </div>
               </div>
             ))}
@@ -323,8 +333,8 @@ export default function ChatPage() {
             <input
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder="Message"
               className="flex-1 bg-gray-100 rounded-full px-4 py-2 text-sm"
+              placeholder="Message"
             />
             <button
               onClick={sendMessage}

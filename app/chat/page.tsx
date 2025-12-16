@@ -36,9 +36,6 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState<string>("");
 
-  // 🔥 MOBILE UI STATE (IMPORTANT)
-  const [showChatList, setShowChatList] = useState<boolean>(true);
-
   /* ================= LOAD CHATS (SIDEBAR PERSIST) ================= */
   useEffect(() => {
     if (!currentUser) return;
@@ -100,8 +97,7 @@ export default function ChatPage() {
       return exists ? prev : [...prev, chatData.chat];
     });
 
-    setActiveChat(chatData.chat);
-    setShowChatList(false); // 📱 mobile → open chat
+    setActiveChat(chatData.chat); // 📱 mobile opens chat
     setSearch("");
   };
 
@@ -120,7 +116,6 @@ export default function ChatPage() {
     });
 
     const data: { message: Message } = await res.json();
-
     setMessages((prev) => [...prev, data.message]);
     setText("");
   };
@@ -143,7 +138,7 @@ export default function ChatPage() {
       {/* ================= CHAT LIST ================= */}
       <div
         className={`${
-          showChatList ? "flex" : "hidden"
+          activeChat ? "hidden" : "flex"
         } md:flex w-full md:w-1/3 flex-col bg-white border-r`}
       >
         {/* Header */}
@@ -180,10 +175,7 @@ export default function ChatPage() {
             return (
               <div
                 key={chat._id}
-                onClick={() => {
-                  setActiveChat(chat);
-                  setShowChatList(false); // 📱 mobile
-                }}
+                onClick={() => setActiveChat(chat)}
                 className="p-4 border-b cursor-pointer hover:bg-gray-100"
               >
                 <p className="font-medium">{name}</p>
@@ -199,12 +191,12 @@ export default function ChatPage() {
       {/* ================= CHAT WINDOW ================= */}
       <div
         className={`${
-          showChatList ? "hidden" : "flex"
+          activeChat ? "flex" : "hidden"
         } md:flex flex-1 flex-col`}
       >
         {!activeChat ? (
           <div className="flex-1 flex items-center justify-center text-gray-500">
-            Select a chat to start messaging
+            Select a chat
           </div>
         ) : (
           <>
@@ -212,10 +204,7 @@ export default function ChatPage() {
             <div className="bg-green-600 text-white p-4 flex items-center gap-3">
               <button
                 className="md:hidden"
-                onClick={() => {
-                  setActiveChat(null);
-                  setShowChatList(true); // 📱 back to list
-                }}
+                onClick={() => setActiveChat(null)}
               >
                 ←
               </button>

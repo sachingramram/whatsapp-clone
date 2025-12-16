@@ -34,13 +34,11 @@ interface DeleteMessageEvent {
 /* ================= PAGE ================= */
 
 export default function ChatPage() {
-  /* ---------- USER ---------- */
   const username =
     typeof window !== "undefined"
       ? (JSON.parse(localStorage.getItem("user") || "{}") as User).name
       : null;
 
-  /* ---------- STATE ---------- */
   const [chats, setChats] = useState<Chat[]>([]);
   const [chatId, setChatId] = useState<string | null>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -91,10 +89,9 @@ export default function ChatPage() {
     channel.bind(
       "delete-message",
       (data: DeleteMessageEvent) => {
-        const { messageId } = data;
         setMessages((prev) =>
           prev.map((m) =>
-            m._id === messageId
+            m._id === data.messageId
               ? { ...m, deletedForEveryone: true }
               : m
           )
@@ -217,9 +214,10 @@ export default function ChatPage() {
       {/* ================= CHAT WINDOW ================= */}
       {chatId && (
         <div
-          className={`flex-1 flex flex-col
+          className={`flex-1 flex flex-col relative
           ${isChatOpen ? "flex" : "hidden md:flex"}`}
         >
+          {/* HEADER */}
           <div className="h-14 bg-[#075E54] text-white flex items-center px-4">
             <button
               className="md:hidden mr-3"
@@ -229,7 +227,8 @@ export default function ChatPage() {
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+          {/* MESSAGES */}
+          <div className="flex-1 overflow-y-auto p-3 space-y-2 pb-24">
             {messages.map((m) => (
               <div
                 key={m._id}
@@ -261,8 +260,15 @@ export default function ChatPage() {
             ))}
           </div>
 
-          {/* ================= INPUT ================= */}
-          <div className="bg-white px-2 py-2 flex items-end gap-2">
+          {/* ================= INPUT (FIXED BOTTOM MOBILE) ================= */}
+          <div
+            className="
+              bg-white px-2 py-2 flex items-end gap-2
+              fixed bottom-0 left-0 right-0
+              md:static
+              z-50
+            "
+          >
             {recording && (
               <div className="flex items-center gap-2 text-red-500">
                 <div className="flex gap-1">

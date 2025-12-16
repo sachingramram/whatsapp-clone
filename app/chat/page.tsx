@@ -25,7 +25,7 @@ interface Message {
 export default function ChatPage() {
   const router = useRouter();
 
-  /* ---------- USER (DERIVED SAFELY) ---------- */
+  /* ---------- USER ---------- */
   const [username] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     const stored = localStorage.getItem("user");
@@ -33,7 +33,7 @@ export default function ChatPage() {
     return (JSON.parse(stored) as User).name;
   });
 
-  /* ---------- CHAT ID (DERIVED SAFELY FROM URL) ---------- */
+  /* ---------- CHAT ID FROM URL ---------- */
   const [chatId, setChatId] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     return new URLSearchParams(window.location.search).get("c");
@@ -57,15 +57,8 @@ export default function ChatPage() {
       .then((res) => res.json())
       .then((data: { chats: Chat[] }) => {
         setChats(data.chats);
-
-        // auto open first chat (mobile UX)
-        if (!chatId && data.chats.length > 0) {
-          const id = data.chats[0]._id;
-          window.history.replaceState(null, "", `/chat?c=${id}`);
-          setChatId(id);
-        }
       });
-  }, [username, chatId]);
+  }, [username]);
 
   /* ================= LOAD MESSAGES ================= */
   useEffect(() => {
@@ -78,7 +71,7 @@ export default function ChatPage() {
       });
   }, [chatId]);
 
-  /* ================= SEARCH USER ================= */
+  /* ================= SEARCH USER (FIXED) ================= */
   const searchUser = async () => {
     if (!username || !search.trim()) return;
 
@@ -112,6 +105,7 @@ export default function ChatPage() {
         : [...prev, chatData.chat]
     );
 
+    // open chat after search
     window.history.pushState(null, "", `/chat?c=${chatData.chat._id}`);
     setChatId(chatData.chat._id);
     setSearch("");
@@ -136,68 +130,76 @@ export default function ChatPage() {
     setText("");
   };
 
-  /* ================= LOGOUT ================= */
-  const logout = () => {
-    localStorage.removeItem("user");
-    router.replace("/");
-  };
-
-  const activeChat = chats.find((c) => c._id === chatId);
   const otherUser =
-    activeChat?.participants.find((p) => p !== username) ?? "";
+    chats
+      .find((c) => c._id === chatId)
+      ?.participants.find((p) => p !== username) ?? "";
 
   /* ================= UI ================= */
 
   return (
-    <div className="h-screen bg-[#ECE5DD] flex overflow-hidden">
+    <div className="h-screen flex bg-[#ECE5DD] overflow-hidden">
 
       {/* ================= CHAT LIST ================= */}
-      <div
-        className={`${
-          chatId ? "hidden md:flex" : "flex"
-        } w-full md:w-1/3 flex-col bg-white`}
-      >
+      <div className="w-full md:w-1/3 bg-white flex flex-col">
+
         {/* Header */}
         <div className="h-14 bg-[#075E54] text-white flex items-center px-4 font-medium">
           WhatsApp
-          <button onClick={logout} className="ml-auto text-sm">
-            Logout
-          </button>
         </div>
 
         {/* Search */}
-        <div className="p-2 bg-gray-100">
+        <div className="p-2 bg-gray-100 flex gap-2">
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search or start new chat"
-            className="w-full rounded-full px-4 py-2 text-sm outline-none"
+            placeholder="Search exact username"
+            className="flex-1 rounded-full px-4 py-2 text-sm outline-none"
           />
+          <button
+            onClick={searchUser}
+            className="bg-[#075E54] text-white px-4 rounded-full text-sm"
+          >
+            Go
+          </button>
         </div>
 
-        {/* List */}
+        {/* Chat List */}
         <div className="flex-1 overflow-y-auto">
           {chats.map((chat) => {
             const name = chat.participants.find(
               (p) => p !== username
             );
+
             return (
               <div
                 key={chat._id}
-                onClick={() => {
-                  window.history.pushState(
-                    null,
-                    "",
-                    `/chat?c=${chat._id}`
-                  );
-                  setChatId(chat._id);
-                }}
-                className="px-4 py-3 border-b flex items-center gap-3 hover:bg-gray-100 cursor-pointer"
+                className="px-4 py-3 border-b flex items-center gap-3"
               >
+                {/* Avatar */}
                 <div className="w-10 h-10 rounded-full bg-gray-400 flex items-center justify-center text-white">
                   {name?.[0]}
                 </div>
-                <p className="font-medium">{name}</p>
+
+                {/* Name */}
+                <div className="flex-1">
+                  <p className="font-medium">{name}</p>
+                </div>
+
+                {/* Arrow Button (MOBILE + DESKTOP) */}
+                <button
+                  onClick={() => {
+                    window.history.pushState(
+                      null,
+                      "",
+                      `/chat?c=${chat._id}`
+                    );
+                    setChatId(chat._id);
+                  }}
+                  className="text-gray-500 text-xl"
+                >
+                  ➤
+                </button>
               </div>
             );
           })}
@@ -219,9 +221,6 @@ export default function ChatPage() {
             >
               ←
             </button>
-            <div className="w-9 h-9 rounded-full bg-gray-400 flex items-center justify-center">
-              {otherUser[0]}
-            </div>
             <p className="font-medium">{otherUser}</p>
           </div>
 

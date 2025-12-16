@@ -42,7 +42,7 @@ export default function ChatPage() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [chatId, setChatId] = useState<string | null>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
-
+  const [loadingChats, setLoadingChats] = useState(true);
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
 
@@ -74,11 +74,18 @@ export default function ChatPage() {
   /* ================= LOAD CHATS ================= */
   useEffect(() => {
     if (!username) return;
-
-    fetch(`/api/chat/list?user=${username}`, { cache: "no-store" })
+  
+    fetch(`/api/chat/list?user=${username}`, {
+      cache: "no-store",
+    })
       .then((r) => r.json())
-      .then((d: { chats: Chat[] }) => setChats(d.chats));
+      .then((d: { chats: Chat[] }) => {
+        setChats(d.chats);
+        setLoadingChats(false); // ✅ allowed
+      })
+      .catch(() => setLoadingChats(false)); // ✅ allowed
   }, [username]);
+  
 
   /* ================= LOAD MESSAGES ================= */
   useEffect(() => {
@@ -340,7 +347,7 @@ export default function ChatPage() {
                 className="md:hidden"
                 onClick={() => setIsChatOpen(false)}
               >
-                ⬅️ Back
+                ⬅️⬅️ 
               </button>
               <span className="font-semibold">
                 {otherUser}

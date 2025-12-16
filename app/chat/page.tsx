@@ -163,12 +163,17 @@ export default function ChatPage() {
   /* ================= SEND MESSAGE ================= */
   const sendMessage = async () => {
     if (!chatId || !username || !text.trim()) return;
-
+  
     const otherUser =
       chats.find((c) => c._id === chatId)?.participants.find(
         (p) => p !== username
-      ) ?? "";
-
+      );
+  
+    if (!otherUser) {
+      alert("Chat not ready yet. Try again.");
+      return;
+    }
+  
     const res = await fetch("/api/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -179,13 +184,19 @@ export default function ChatPage() {
         text,
       }),
     });
-
-    const data: { message: Message } = await res.json();
-
-    // ✅ sender optimistic update (ONLY ONCE)
+  
+    if (!res.ok) {
+      alert("Failed to send message");
+      return;
+    }
+  
+    const data = await res.json();
+  
+    // ✅ sender instant UI
     setMessages((prev) => [...prev, data.message]);
     setText("");
   };
+  
 
   /* ================= LOGOUT ================= */
   const logout = () => {

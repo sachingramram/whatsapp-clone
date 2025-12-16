@@ -1,9 +1,6 @@
-import dynamic from "next/dynamic";
+"use client";
 
-// 🚫 Disable SSR completely for chat UI
-const ChatClient = dynamic(() => import("./ChatClient"), {
-  ssr: false,
-});
+import ChatClient from "./ChatClient";
 
 export default function ChatPage() {
   return <ChatClient />;

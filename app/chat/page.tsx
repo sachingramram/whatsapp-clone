@@ -278,7 +278,7 @@ export default function ChatPage() {
       className="text-xl leading-none"
       title="Create Group"
     >
-      +
+      
     </button>
           <button onClick={logout} className="text-sm">
             Logout

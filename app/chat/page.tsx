@@ -39,11 +39,9 @@ export default function ChatPage() {
     return stored ? (JSON.parse(stored) as User).name : null;
   });
 
-  /* ---------- CHAT ---------- */
-  const [chatId, setChatId] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    return new URLSearchParams(window.location.search).get("c");
-  });
+  /* ---------- CHAT STATE ---------- */
+  const [chatId, setChatId] = useState<string | null>(null);
+  const [isChatOpen, setIsChatOpen] = useState(false); // ✅ MOBILE FIX
 
   const [chats, setChats] = useState<Chat[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -63,7 +61,7 @@ export default function ChatPage() {
     if (!username) router.replace("/");
   }, [username, router]);
 
-  /* ================= LOAD CHAT LIST ================= */
+  /* ================= LOAD CHATS ================= */
   useEffect(() => {
     if (!username) return;
 
@@ -105,21 +103,14 @@ export default function ChatPage() {
     channel.bind("new-message", (msg: Message) => {
       if (msg.sender === username) return;
 
-      // 🔊 receive sound
       new Audio("/sounds/message.mp3").play().catch(() => {});
-
       setMessages((prev) => [...prev, msg]);
     });
 
-    channel.bind("typing", (data: { user: string; typing: boolean }) => {
-      if (data.user === username) return;
-      setTypingUser(data.typing ? data.user : null);
-    });
-
-    channel.bind("seen", () => {
-      setMessages((prev) =>
-        prev.map((m) => ({ ...m, seen: true }))
-      );
+    channel.bind("typing", (d: { user: string; typing: boolean }) => {
+      if (d.user !== username) {
+        setTypingUser(d.typing ? d.user : null);
+      }
     });
 
     return () => {
@@ -158,8 +149,8 @@ export default function ChatPage() {
         : [...p, cd.chat]
     );
 
-    window.history.pushState(null, "", `/chat?c=${cd.chat._id}`);
     setChatId(cd.chat._id);
+    setIsChatOpen(true); // ✅ only on click
     setSearch("");
   };
 
@@ -185,46 +176,11 @@ export default function ChatPage() {
       }),
     });
 
-    if (!r.ok) return alert("Send failed");
+    if (!r.ok) return;
 
     const d = await r.json();
     setMessages((p) => [...p, d.message]);
     setText("");
-  };
-
-  /* ================= VOICE RECORD ================= */
-  const startRecording = async () => {
-    if (!chatId || !username) return;
-
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const recorder = new MediaRecorder(stream);
-    mediaRecorderRef.current = recorder;
-
-    const chunks: Blob[] = [];
-
-    recorder.ondataavailable = (e) => chunks.push(e.data);
-
-    recorder.onstop = async () => {
-      const blob = new Blob(chunks, { type: "audio/webm" });
-      const formData = new FormData();
-
-      formData.append("audio", blob);
-      formData.append("chatId", chatId);
-      formData.append("sender", username);
-
-      await fetch("/api/messages/voice", {
-        method: "POST",
-        body: formData,
-      });
-    };
-
-    recorder.start();
-    setRecording(true);
-  };
-
-  const stopRecording = () => {
-    mediaRecorderRef.current?.stop();
-    setRecording(false);
   };
 
   /* ================= LOGOUT ================= */
@@ -241,8 +197,12 @@ export default function ChatPage() {
 
   return (
     <div className="h-screen flex bg-[#ECE5DD]">
-      {/* CHAT LIST */}
-      <div className="w-full md:w-1/3 bg-white flex flex-col border-r">
+      {/* ================= CHAT LIST ================= */}
+      <div
+        className={`bg-white flex flex-col border-r
+        w-full md:w-1/3
+        ${isChatOpen ? "hidden md:flex" : "flex"}`}
+      >
         <div className="h-14 bg-[#075E54] text-white flex items-center px-4">
           WhatsApp
           <button onClick={logout} className="ml-auto text-sm">
@@ -271,37 +231,29 @@ export default function ChatPage() {
             return (
               <div
                 key={c._id}
-                className="px-4 py-3 border-b flex justify-between"
+                onClick={() => {
+                  setChatId(c._id);
+                  setIsChatOpen(true); // ✅ open chat manually
+                }}
+                className="px-4 py-3 border-b cursor-pointer hover:bg-gray-100"
               >
-                <span>{n}</span>
-                <button
-                  onClick={() => {
-                    window.history.pushState(
-                      null,
-                      "",
-                      `/chat?c=${c._id}`
-                    );
-                    setChatId(c._id);
-                  }}
-                >
-                  ➤
-                </button>
+                {n}
               </div>
             );
           })}
         </div>
       </div>
 
-      {/* CHAT WINDOW */}
+      {/* ================= CHAT WINDOW ================= */}
       {chatId && (
-        <div className="flex-1 flex flex-col">
+        <div
+          className={`flex-1 flex flex-col bg-[#ECE5DD]
+          ${isChatOpen ? "flex" : "hidden md:flex"}`}
+        >
           <div className="h-14 bg-[#075E54] text-white flex items-center px-4">
             <button
-              className="md:hidden mr-2"
-              onClick={() => {
-                window.history.pushState(null, "", "/chat");
-                setChatId(null);
-              }}
+              className="md:hidden mr-3"
+              onClick={() => setIsChatOpen(false)}
             >
               ←
             </button>
@@ -332,69 +284,18 @@ export default function ChatPage() {
                   }`}
                 >
                   {m.text}
-                  <div className="text-[10px] text-right text-gray-500">
-                    {new Date(m.createdAt).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                    {m.sender === username &&
-                      (m.seen ? " ✓✓" : " ✓")}
-                  </div>
                 </div>
               </div>
             ))}
           </div>
 
           <div className="h-14 bg-white flex items-center px-2 gap-2">
-            <button
-              onMouseDown={startRecording}
-              onMouseUp={stopRecording}
-              onTouchStart={startRecording}
-              onTouchEnd={stopRecording}
-              className={`text-xl ${
-                recording ? "text-red-500" : ""
-              }`}
-            >
-              🎤
-            </button>
-
             <input
               value={text}
-              onChange={(e) => {
-                setText(e.target.value);
-
-                if (!chatId || !username) return;
-
-                fetch("/api/typing", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    chatId,
-                    user: username,
-                    typing: true,
-                  }),
-                });
-
-                if (typingTimer.current) {
-                  clearTimeout(typingTimer.current);
-                }
-
-                typingTimer.current = setTimeout(() => {
-                  fetch("/api/typing", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      chatId,
-                      user: username,
-                      typing: false,
-                    }),
-                  });
-                }, 1000);
-              }}
+              onChange={(e) => setText(e.target.value)}
               className="flex-1 bg-gray-100 rounded-full px-4 py-2 text-sm"
               placeholder="Message"
             />
-
             <button
               onClick={sendMessage}
               className="text-[#075E54] font-medium px-3"
